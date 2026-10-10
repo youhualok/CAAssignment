@@ -1,0 +1,3143 @@
+.MODEL SMALL
+.STACK 100H
+
+.DATA
+; ================================================================
+; AMCS1113 - LIBRARY MANAGEMENT SYSTEM
+; DOS / 8086 / MASM-TASM style source code
+; Default login: admin / 1234
+; ================================================================
+
+validUser       DB 'admin'
+validPass       DB '1234'
+loginAttempts   DB 0
+
+inputBuffer     DB 30,0,30 DUP(0)
+passwordBuffer  DB 10,0,10 DUP(0)
+memberName      DB 21 DUP('$')
+memberID        DB 5 DUP('$')
+
+bookAvailable   DB 2,1,1,2,3,1,2,2,1,3
+activeLoan      DB 0
+currentBook     DB 0
+loanDays        DW 0
+renewCount      DB 0
+
+borrowCount     DW 0
+returnCount     DW 0
+renewTotal      DW 0
+grossFineTotal  DW 0
+discountTotal   DW 0
+netFineTotal    DW 0
+
+tempMin         DW 0
+tempMax         DW 0
+tempGross       DW 0
+tempDiscount    DW 0
+tempNet         DW 0
+tempOverdue     DW 0
+
+crlf            DB 13,10,'$'
+line            DB 13,10,'============================================================$'
+shortLine       DB 13,10,'-----------------------------------------------------------------$'
+titleMsg        DB 13,10,'          TAR UMT LIBRARY MANAGEMENT SYSTEM$'
+loginTitle      DB 13,10,'====================== USER LOGIN ==========================$'
+userPrompt      DB 13,10,'Username (admin): $'
+passPrompt      DB 13,10,'Password: $'
+loginOK         DB 13,10,'Login successful. Welcome to the library system!$'
+loginFail       DB 13,10,'Invalid username or password.$'
+attemptMsg      DB 13,10,'You have a maximum of 3 login attempts.$'
+lockedMsg       DB 13,10,'Access denied. Too many failed login attempts.$'
+
+profileTitle    DB 13,10,'================ BORROWER REGISTRATION =====================$'
+namePrompt      DB 13,10,'Enter member name (1-20 characters): $'
+nameError       DB 13,10,'Invalid name. Enter 1-20 English letters and spaces only.$'
+idPrompt        DB 13,10,'Enter member ID (format L followed by 3 digits, e.g. L001): $'
+idError         DB 13,10,'Invalid member ID. Please follow the format L001.$'
+profileOK       DB 13,10,'Borrower profile registered successfully.$'
+
+mainMenu        DB 13,10,13,10,'======================= MAIN MENU ==========================',13,10
+                DB '1. Book Operations',13,10
+                DB '2. Fine Calculator',13,10
+                DB '3. Member Summary Report',13,10
+                DB '4. Logout',13,10
+                DB '5. Exit System',13,10
+                DB '6. Search Book Catalogue',13,10
+                DB '7. System Information / Help',13,10
+                DB '8. Member and Account Services',13,10
+                DB 'Select an option (1-8): $'
+
+bookMenu        DB 13,10,13,10,'==================== BOOK OPERATIONS =======================',13,10
+                DB '1. View Book Catalogue',13,10
+                DB '2. Borrow a Book',13,10
+                DB '3. Return a Book',13,10
+                DB '4. Renew Current Loan',13,10
+                DB '5. Back to Main Menu',13,10
+                DB 'Select an option (1-5): $'
+
+catalogueTitle  DB 13,10,13,10,'===================== BOOK CATALOGUE ============================$'
+bookHeader      DB 13,10,'No.  Book Title                       Author               Avail.$'
+book1           DB 13,10,'1.   Computer Architecture            William Stallings       $'
+book2           DB 13,10,'2.   Assembly Language Basics         Kip R. Irvine           $'
+book3           DB 13,10,'3.   Data Structures                  Seymour Lipschutz       $'
+book4           DB 13,10,'4.   Operating System Concepts        Abraham Silberschatz    $'
+book5           DB 13,10,'5.   Database System Fundamentals     Ramez Elmasri           $'
+book6           DB 13,10,'6.   Computer Networks                Andrew S. Tanenbaum     $'
+book7           DB 13,10,'7.   Software Engineering             Ian Sommerville         $'
+book8           DB 13,10,'8.   Object Oriented Programming      Robert Lafore           $'
+book9           DB 13,10,'9.   Web Development Essentials       Terry Felke-Morris      $'
+book10          DB 13,10,'10.  Cybersecurity Principles         Charles J. Brooks       $'
+
+chooseBookMsg   DB 13,10,'Choose a book number (1-10): $'
+daysPrompt      DB 13,10,'Enter borrowing period in days (1-14): $'
+notAvailableMsg DB 13,10,'Sorry, this book is currently unavailable.$'
+alreadyLoanMsg  DB 13,10,'Only one active loan is allowed. Return it before borrowing again.$'
+noLoanMsg       DB 13,10,'No active loan was found for this member.$'
+borrowConfirm   DB 13,10,'Confirm borrowing this book (Y/N): $'
+borrowOK        DB 13,10,'Book borrowed successfully. Please return it on time.$'
+cancelMsg       DB 13,10,'Action cancelled. No record was changed.$'
+
+returnTitle     DB 13,10,13,10,'======================= RETURN BOOK ========================$'
+overduePrompt   DB 13,10,'Enter overdue days (0-99; enter 0 if returned on time): $'
+returnConfirm   DB 13,10,'Confirm return and add the net fine to account balance (Y/N): $'
+returnOK        DB 13,10,'Book returned successfully. Inventory has been updated.$'
+finePolicy      DB 13,10,'Policy: RM2 per overdue day; 20% discount when gross fine is RM20 or more.$'
+
+renewConfirm    DB 13,10,'Extend this loan by 7 days (Y/N): $'
+renewOK         DB 13,10,'Loan renewed successfully. Seven days were added.$'
+renewLimitMsg   DB 13,10,'Renewal denied. Each loan can only be renewed once.$'
+
+fineTitle       DB 13,10,13,10,'===================== FINE CALCULATOR ======================$'
+calcOnlyMsg     DB 13,10,'This calculation is an estimate and does not change any record.$'
+grossFineMsg    DB 13,10,'Gross overdue fine : RM$'
+discountMsg     DB 13,10,'Discount (20%)    : RM$'
+netFineMsg      DB 13,10,'Net fine payable  : RM$'
+
+reportTitle     DB 13,10,13,10,'================ MEMBER SUMMARY REPORT =====================$'
+memberNameMsg   DB 13,10,'Member name          : $'
+memberIDMsg     DB 13,10,'Member ID            : $'
+loanStatusMsg   DB 13,10,'Current loan status  : $'
+activeMsg       DB 'ACTIVE$'
+noneMsg         DB 'NONE$'
+bookTitleMsg    DB 13,10,'Current book / author: $'
+loanDaysMsg     DB 13,10,'Approved loan days   : $'
+borrowCountMsg  DB 13,10,'Books borrowed       : $'
+returnCountMsg  DB 13,10,'Books returned       : $'
+renewCountMsg   DB 13,10,'Successful renewals  : $'
+grossTotalMsg   DB 13,10,'Total gross fines    : RM$'
+discountTotMsg  DB 13,10,'Total discounts      : RM$'
+netTotalMsg     DB 13,10,'Total net fines charged: RM$'
+copiesMsg       DB 13,10,'Available copies     : $'
+
+invalidChoice   DB 13,10,'Invalid choice. Please enter a number within the stated range.$'
+invalidNumber   DB 13,10,'Invalid input. Enter digits only and do not leave it blank.$'
+ynError         DB 13,10,'Invalid input. Please enter Y or N only.$'
+logoutConfirm   DB 13,10,'Are you sure you want to logout (Y/N): $'
+logoutOK        DB 13,10,'Logout successful.$'
+exitConfirm     DB 13,10,'Are you sure you want to exit the system (Y/N): $'
+goodbyeMsg      DB 13,10,'Thank you for using the Library Management System. Goodbye!$'
+pressKeyMsg     DB 13,10,13,10,'Press any key to continue...$'
+
+searchTitle     DB 13,10,13,10,'====================== BOOK SEARCH =========================$'
+searchPrompt    DB 13,10,'Enter a keyword (1-20 characters): $'
+searchEmptyMsg  DB 13,10,'Keyword cannot be blank. Please try again.$'
+searchResultMsg DB 13,10,'Matching titles:$'
+searchNoneMsg   DB 13,10,'No matching book title was found.$'
+searchHintMsg   DB 13,10,'Search is case-insensitive and accepts part of a title.$'
+helpTitle       DB 13,10,13,10,'================== SYSTEM INFORMATION ======================$'
+helpText        DB 13,10,'System : TAR UMT Library Management System',13,10
+                DB 'Mode   : DOS 8086, MASM/TASM compatible',13,10
+                DB 'Login  : admin / 1234',13,10,13,10
+                DB 'MAIN RULES',13,10
+                DB '1. Register one borrower after every successful login.',13,10
+                DB '2. Only one active loan is allowed for the borrower.',13,10
+                DB '3. Normal loan period is between 1 and 14 days.',13,10
+                DB '4. A loan may be renewed once for another seven days.',13,10
+                DB '5. Overdue fine is RM2 per day.',13,10
+                DB '6. Gross fine of RM20 or more receives 20 percent discount.',13,10
+                DB '7. Every important update requires Y/N confirmation.',13,10,13,10
+                DB 'INPUT PROTECTION',13,10
+                DB '- Empty, out-of-range and nonnumeric values are rejected.',13,10
+                DB '- Member ID must use L plus exactly three digits.',13,10
+                DB '- Password is masked and supports Backspace.',13,10
+                DB '- Search accepts uppercase or lowercase text.',13,10
+                DB '- Cancelled operations never modify records.$'
+
+searchKeyword   DB 21 DUP(0)
+searchFound     DB 0
+searchBook1     DB 'Computer Architecture',0
+searchBook2     DB 'Assembly Language Basics',0
+searchBook3     DB 'Data Structures',0
+searchBook4     DB 'Operating System Concepts',0
+searchBook5     DB 'Database System Fundamentals',0
+searchBook6     DB 'Computer Networks',0
+searchBook7     DB 'Software Engineering',0
+searchBook8     DB 'Object Oriented Programming',0
+searchBook9     DB 'Web Development Essentials',0
+searchBook10    DB 'Cybersecurity Principles',0
+
+accountMenu     DB 13,10,13,10,'================ MEMBER / ACCOUNT SERVICES =================',13,10
+                DB '1. Edit Member Name',13,10
+                DB '2. Edit Member ID',13,10
+                DB '3. View Outstanding Balance',13,10
+                DB '4. Pay Outstanding Balance',13,10
+                DB '5. Report Current Book Lost',13,10
+                DB '6. View Transaction History',13,10
+                DB '7. Inventory Statistics',13,10
+                DB '8. Reserve an Unavailable Book',13,10
+                DB '9. Cancel Book Reservation',13,10
+                DB '10. Inventory Maintenance',13,10
+                DB '11. System Integrity Check',13,10
+                DB '12. Create Session Backup',13,10
+                DB '13. Restore Session Backup',13,10
+                DB '14. Detailed System Report',13,10
+                DB '15. Calculate Loan Due Date',13,10
+                DB '16. Back to Main Menu',13,10
+                DB 'Select an option (1-16): $'
+editNameTitle   DB 13,10,'==================== EDIT MEMBER NAME ======================$'
+editIDTitle     DB 13,10,'===================== EDIT MEMBER ID =======================$'
+editConfirmMsg  DB 13,10,'Confirm this profile change (Y/N): $'
+editOKMsg       DB 13,10,'Member profile updated successfully.$'
+balanceTitle    DB 13,10,'=================== ACCOUNT BALANCE ========================$'
+balanceMsg      DB 13,10,'Outstanding balance : RM$'
+noBalanceMsg    DB 13,10,'There is no outstanding balance.$'
+payPrompt       DB 13,10,'Enter payment amount in whole RM (1-999): $'
+payTooMuchMsg   DB 13,10,'Payment cannot exceed the outstanding balance.$'
+payOKMsg        DB 13,10,'Payment accepted. Account balance has been updated.$'
+cardPrompt      DB 13,10,'Enter 16-digit card number: $'
+cardErrorMsg    DB 13,10,'Invalid card number. Enter exactly 16 digits.$'
+pinPrompt       DB 13,10,'Enter 4-digit card PIN: $'
+pinErrorMsg     DB 13,10,'Invalid PIN. Enter exactly 4 digits.$'
+cardNoticeMsg   DB 13,10,'Demo mode: card format is validated; no bank is contacted.$'
+cardConfirmMsg  DB 13,10,'Confirm card payment (Y/N): $'
+cardUsedMsg     DB 13,10,'Card used             : ************$'
+cardLastFour   DB 4 DUP('0'),'$'
+lostTitle       DB 13,10,'==================== REPORT LOST BOOK ======================$'
+lostPolicyMsg   DB 13,10,'Lost-book charge is RM50 plus any outstanding fine.$'
+lostConfirmMsg  DB 13,10,'Confirm that the current book is lost (Y/N): $'
+lostOKMsg       DB 13,10,'Lost book recorded. RM50 was added to the balance.$'
+historyTitle    DB 13,10,'================== TRANSACTION HISTORY =====================$'
+historyEmptyMsg DB 13,10,'No transaction has been recorded in this session.$'
+historyHeader   DB 13,10,'No.  Type       Book / Author / Amount$'
+histBorrowMsg   DB 'BORROW     $'
+histReturnMsg   DB 'RETURN     $'
+histRenewMsg    DB 'RENEW      $'
+histPaymentMsg  DB 'PAYMENT    RM$'
+histLostMsg     DB 'LOST       $'
+inventoryTitle  DB 13,10,'================= INVENTORY STATISTICS =====================$'
+totalTitlesMsg  DB 13,10,'Total book titles      : $'
+totalCopiesMsg  DB 13,10,'Available book copies  : $'
+borrowedCopiesMsg DB 13,10,'Copies currently out   : $'
+zeroStockMsg    DB 13,10,'Titles with zero stock : $'
+accountBalance  DW 0
+paymentTotal    DW 0
+lostCount       DW 0
+historyCount    DB 0
+historyType     DB 20 DUP(0)
+historyBook     DB 20 DUP(0)
+historyAmount   DW 20 DUP(0)
+logTempType     DB 0
+logTempBook     DB 0
+logTempAmount   DW 0
+oldMemberName   DB 21 DUP('$')
+oldMemberID     DB 5 DUP('$')
+reservationBook DB 0
+reservationCount DW 0
+reservationTitle DB 13,10,'==================== BOOK RESERVATION ======================$'
+reserveChooseMsg DB 13,10,'Choose an unavailable book to reserve (1-10): $'
+reserveStockMsg DB 13,10,'Reservation is only needed when available copies are zero.$'
+reserveExistsMsg DB 13,10,'Only one active reservation is allowed per member.$'
+reserveConfirmMsg DB 13,10,'Confirm this reservation (Y/N): $'
+reserveOKMsg    DB 13,10,'Reservation recorded successfully.$'
+noReserveMsg    DB 13,10,'No active reservation was found.$'
+cancelReserveMsg DB 13,10,'Cancel the current reservation (Y/N): $'
+cancelReserveOK DB 13,10,'Reservation cancelled successfully.$'
+reservedBookMsg DB 13,10,'Reserved book         : $'
+maintenanceTitle DB 13,10,'================= INVENTORY MAINTENANCE ====================$'
+maintenanceBookMsg DB 13,10,'Select title to update (1-10): $'
+maintenanceCopiesMsg DB 13,10,'Enter new available copies (0-9): $'
+maintenanceConfirm DB 13,10,'Confirm inventory replacement (Y/N): $'
+maintenanceOK  DB 13,10,'Inventory quantity updated successfully.$'
+oldStock       DB 0
+integrityTitle DB 13,10,'================ SYSTEM INTEGRITY CHECK ====================$'
+integrityOKMsg DB 13,10,'All checked records are internally consistent.$'
+integrityRepairMsg DB 13,10,'Invalid record values were detected and repaired.$'
+integrityChecksMsg DB 13,10,'Checks performed       : $'
+integrityRepairsMsg DB 13,10,'Repairs performed      : $'
+integrityChecks DW 0
+integrityRepairs DW 0
+backupValid     DB 0
+backupName      DB 21 DUP('$')
+backupID        DB 5 DUP('$')
+backupStock     DB 10 DUP(0)
+backupActive    DB 0
+backupBook      DB 0
+backupDays      DW 0
+backupRenew     DB 0
+backupBorrowCount DW 0
+backupReturnCount DW 0
+backupRenewTotal DW 0
+backupGross     DW 0
+backupDiscount  DW 0
+backupNet       DW 0
+backupBalance   DW 0
+backupPayments  DW 0
+backupLost      DW 0
+backupReserve   DB 0
+backupReservationTotal DW 0
+backupHistoryCount DB 0
+backupHistoryType DB 20 DUP(0)
+backupHistoryBook DB 20 DUP(0)
+backupHistoryAmount DW 20 DUP(0)
+backupTitle     DB 13,10,'===================== SESSION BACKUP =======================$'
+backupConfirm  DB 13,10,'Create or replace the in-memory session backup (Y/N): $'
+backupOKMsg     DB 13,10,'Session backup created successfully.$'
+restoreConfirm DB 13,10,'Restore the saved session and overwrite current data (Y/N): $'
+restoreOKMsg    DB 13,10,'Saved session restored successfully.$'
+noBackupMsg     DB 13,10,'No session backup is currently available.$'
+detailedTitle  DB 13,10,'================== DETAILED SYSTEM REPORT ==================$'
+paymentsMsg    DB 13,10,'Payments received     : RM$'
+balanceReportMsg DB 13,10,'Outstanding balance   : RM$'
+lostCountMsg   DB 13,10,'Books reported lost   : $'
+reservationTotalMsg DB 13,10,'Reservations created  : $'
+historyCountMsg DB 13,10,'History records stored: $'
+backupStatusMsg DB 13,10,'Backup available      : $'
+yesMsg         DB 'YES$'
+noMsg          DB 'NO$'
+dateTitle      DB 13,10,'================== LOAN DUE DATE CALCULATOR ================ $'
+dateNoLoanMsg  DB 13,10,'A due date can only be calculated for an active loan.$'
+dayPrompt      DB 13,10,'Enter borrowing day (1-31): $'
+monthPrompt    DB 13,10,'Enter borrowing month (1-12): $'
+yearPrompt     DB 13,10,'Enter borrowing year (2024-2099): $'
+dateInvalidMsg DB 13,10,'That date does not exist. Please enter the complete date again.$'
+borrowDateMsg  DB 13,10,'Borrowing date        : $'
+dueDateMsg     DB 13,10,'Calculated due date   : $'
+dateSeparator  DB '/$'
+currentDay     DW 0
+currentMonth   DW 0
+currentYear    DW 0
+dueDay         DW 0
+dueMonth       DW 0
+dueYear        DW 0
+daysInMonth    DW 0
+receiptTitle   DB 13,10,13,10,'===================== TRANSACTION RECEIPT ==================$'
+receiptTypeMsg DB 13,10,'Transaction type      : $'
+receiptBorrow  DB 'BOOK BORROWING$'
+receiptReturn  DB 'BOOK RETURN$'
+receiptRenew   DB 'LOAN RENEWAL$'
+receiptPayment DB 'ACCOUNT PAYMENT$'
+receiptMemberMsg DB 13,10,'Member ID             : $'
+receiptBookMsg DB 13,10,'Book title / author   : $'
+receiptDaysMsg DB 13,10,'Approved loan days    : $'
+receiptGrossMsg DB 13,10,'Gross fine            : RM$'
+receiptDiscountMsg DB 13,10,'Discount              : RM$'
+receiptNetMsg  DB 13,10,'Net fine charged      : RM$'
+receiptPaidMsg DB 13,10,'Amount paid           : RM$'
+receiptBalanceMsg DB 13,10,'Remaining balance     : RM$'
+receiptEndMsg  DB 13,10,'============================================================$'
+lastReturnedBook DB 0
+lastPayment    DW 0
+
+.CODE
+
+MAIN PROC
+    MOV AX,@DATA
+    MOV DS,AX
+
+LOGIN_SCREEN:
+    CALL CLEAR_SCREEN
+    LEA DX,line
+    CALL PRINT_STRING
+    LEA DX,titleMsg
+    CALL PRINT_STRING
+    LEA DX,line
+    CALL PRINT_STRING
+    LEA DX,loginTitle
+    CALL PRINT_STRING
+    LEA DX,attemptMsg
+    CALL PRINT_STRING
+
+    LEA DX,userPrompt
+    CALL PRINT_STRING
+    CALL READ_LINE
+    CALL CHECK_USERNAME
+    CMP AL,1
+    JE USERNAME_ACCEPTED
+    JMP BAD_LOGIN
+USERNAME_ACCEPTED:
+
+    LEA DX,passPrompt
+    CALL PRINT_STRING
+    CALL READ_PASSWORD
+    CALL CHECK_PASSWORD
+    CMP AL,1
+    JE PASSWORD_ACCEPTED
+    JMP BAD_LOGIN
+PASSWORD_ACCEPTED:
+
+    MOV loginAttempts,0
+    LEA DX,loginOK
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    CALL RESET_MEMBER_SESSION
+    CALL REGISTER_MEMBER
+
+MAIN_MENU_LOOP:
+    CALL CLEAR_SCREEN
+    LEA DX,titleMsg
+    CALL PRINT_STRING
+    LEA DX,mainMenu
+    MOV CX,1
+    MOV BX,8
+    CALL READ_NUMBER_RANGE
+
+    CMP AX,1
+    JE OPEN_BOOK_MENU
+    CMP AX,2
+    JE OPEN_FINE_CALCULATOR
+    CMP AX,3
+    JE OPEN_REPORT
+    CMP AX,4
+    JE DO_LOGOUT
+    CMP AX,5
+    JE DO_EXIT
+    CMP AX,6
+    JE OPEN_SEARCH
+    CMP AX,7
+    JE OPEN_HELP
+    JMP OPEN_ACCOUNT
+
+OPEN_BOOK_MENU:
+    CALL BOOK_OPERATIONS
+    JMP MAIN_MENU_LOOP
+
+OPEN_FINE_CALCULATOR:
+    CALL FINE_CALCULATOR
+    JMP MAIN_MENU_LOOP
+
+OPEN_REPORT:
+    CALL DISPLAY_REPORT
+    JMP MAIN_MENU_LOOP
+
+OPEN_SEARCH:
+    CALL SEARCH_CATALOGUE
+    JMP MAIN_MENU_LOOP
+
+OPEN_HELP:
+    CALL DISPLAY_HELP
+    JMP MAIN_MENU_LOOP
+
+OPEN_ACCOUNT:
+    CALL ACCOUNT_SERVICES
+    JMP MAIN_MENU_LOOP
+
+DO_LOGOUT:
+    LEA DX,logoutConfirm
+    CALL READ_YN
+    CMP AL,1
+    JNE MAIN_MENU_LOOP
+    LEA DX,logoutOK
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    JMP LOGIN_SCREEN
+
+DO_EXIT:
+    LEA DX,exitConfirm
+    CALL READ_YN
+    CMP AL,1
+    JNE MAIN_MENU_LOOP
+    LEA DX,goodbyeMsg
+    CALL PRINT_STRING
+    MOV AX,4C00H
+    INT 21H
+
+BAD_LOGIN:
+    INC loginAttempts
+    LEA DX,loginFail
+    CALL PRINT_STRING
+    CMP loginAttempts,3
+    JAE LOGIN_LOCKED
+    CALL PAUSE_SCREEN
+    JMP LOGIN_SCREEN
+
+LOGIN_LOCKED:
+    LEA DX,lockedMsg
+    CALL PRINT_STRING
+    MOV AX,4C01H
+    INT 21H
+MAIN ENDP
+
+; ================================================================
+; BORROWER DATA ENTRY WITH VALIDATION
+; ================================================================
+REGISTER_MEMBER PROC
+    CALL CLEAR_SCREEN
+    LEA DX,profileTitle
+    CALL PRINT_STRING
+
+GET_MEMBER_NAME:
+    LEA DX,namePrompt
+    CALL PRINT_STRING
+    CALL READ_LINE
+    MOV AL,inputBuffer[1]
+    CMP AL,0
+    JE BAD_NAME
+    CMP AL,20
+    JA BAD_NAME
+    CALL VALIDATE_PERSON_NAME
+    CMP AL,1
+    JNE BAD_NAME
+    LEA SI,inputBuffer+2
+    LEA DI,memberName
+    XOR CH,CH
+    MOV CL,inputBuffer[1]
+    CALL COPY_TO_DOLLAR_STRING
+    JMP GET_MEMBER_ID
+
+BAD_NAME:
+    LEA DX,nameError
+    CALL PRINT_STRING
+    JMP GET_MEMBER_NAME
+
+GET_MEMBER_ID:
+    LEA DX,idPrompt
+    CALL PRINT_STRING
+    CALL READ_LINE
+    CMP inputBuffer[1],4
+    JNE BAD_MEMBER_ID
+    MOV AL,inputBuffer[2]
+    CMP AL,'l'
+    JNE CHECK_CAPITAL_L
+    MOV inputBuffer[2],'L'
+    JMP CHECK_ID_DIGITS
+CHECK_CAPITAL_L:
+    CMP AL,'L'
+    JNE BAD_MEMBER_ID
+CHECK_ID_DIGITS:
+    MOV SI,3
+    MOV CX,3
+ID_DIGIT_LOOP:
+    MOV AL,inputBuffer[SI]
+    CMP AL,'0'
+    JB BAD_MEMBER_ID
+    CMP AL,'9'
+    JA BAD_MEMBER_ID
+    INC SI
+    LOOP ID_DIGIT_LOOP
+    LEA SI,inputBuffer+2
+    LEA DI,memberID
+    MOV CX,4
+    CALL COPY_TO_DOLLAR_STRING
+    LEA DX,profileOK
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+
+BAD_MEMBER_ID:
+    LEA DX,idError
+    CALL PRINT_STRING
+    JMP GET_MEMBER_ID
+REGISTER_MEMBER ENDP
+
+; ================================================================
+; MENU AND SUBMENU CONTROL
+; ================================================================
+BOOK_OPERATIONS PROC
+BOOK_MENU_LOOP:
+    CALL CLEAR_SCREEN
+    LEA DX,bookMenu
+    MOV CX,1
+    MOV BX,5
+    CALL READ_NUMBER_RANGE
+    CMP AX,1
+    JE BM_CATALOGUE
+    CMP AX,2
+    JE BM_BORROW
+    CMP AX,3
+    JE BM_RETURN
+    CMP AX,4
+    JE BM_RENEW
+    RET
+
+BM_CATALOGUE:
+    CALL DISPLAY_CATALOGUE
+    JMP BOOK_MENU_LOOP
+BM_BORROW:
+    CALL BORROW_BOOK
+    JMP BOOK_MENU_LOOP
+BM_RETURN:
+    CALL RETURN_BOOK
+    JMP BOOK_MENU_LOOP
+BM_RENEW:
+    CALL RENEW_BOOK
+    JMP BOOK_MENU_LOOP
+BOOK_OPERATIONS ENDP
+
+; ================================================================
+; FUNCTION 1 - DISPLAY AND PROCESS BOOK AVAILABILITY
+; ================================================================
+DISPLAY_CATALOGUE PROC
+    CALL CLEAR_SCREEN
+    LEA DX,catalogueTitle
+    CALL PRINT_STRING
+    LEA DX,bookHeader
+    CALL PRINT_STRING
+    LEA DX,shortLine
+    CALL PRINT_STRING
+    LEA DX,book1
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[0]
+    CALL PRINT_NUM
+    LEA DX,book2
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[1]
+    CALL PRINT_NUM
+    LEA DX,book3
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[2]
+    CALL PRINT_NUM
+    LEA DX,book4
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[3]
+    CALL PRINT_NUM
+    LEA DX,book5
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[4]
+    CALL PRINT_NUM
+    LEA DX,book6
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[5]
+    CALL PRINT_NUM
+    LEA DX,book7
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[6]
+    CALL PRINT_NUM
+    LEA DX,book8
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[7]
+    CALL PRINT_NUM
+    LEA DX,book9
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[8]
+    CALL PRINT_NUM
+    LEA DX,book10
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[9]
+    CALL PRINT_NUM
+    CALL PRINT_CATALOGUE_TOTALS
+    CALL PAUSE_SCREEN
+    RET
+DISPLAY_CATALOGUE ENDP
+
+; ================================================================
+; FUNCTION 2 - BORROW BOOK AND REDUCE AVAILABLE COPY COUNT
+; ================================================================
+BORROW_BOOK PROC
+    CMP activeLoan,1
+    JNE BORROW_ALLOWED
+    LEA DX,alreadyLoanMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+
+BORROW_ALLOWED:
+    CALL DISPLAY_CATALOGUE
+    LEA DX,chooseBookMsg
+    MOV CX,1
+    MOV BX,10
+    CALL READ_NUMBER_RANGE
+    MOV SI,AX
+    DEC SI
+    CMP bookAvailable[SI],0
+    JNE BOOK_IN_STOCK
+    LEA DX,notAvailableMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+
+BOOK_IN_STOCK:
+    PUSH SI
+    LEA DX,daysPrompt
+    MOV CX,1
+    MOV BX,14
+    CALL READ_NUMBER_RANGE
+    MOV loanDays,AX
+    LEA DX,borrowConfirm
+    CALL READ_YN
+    POP SI
+    CMP AL,1
+    JNE BORROW_CANCELLED
+
+    DEC bookAvailable[SI]
+    INC SI
+    MOV AX,SI
+    MOV currentBook,AL
+    MOV activeLoan,1
+    MOV renewCount,0
+    INC borrowCount
+    MOV AL,1
+    MOV BL,currentBook
+    XOR DX,DX
+    CALL LOG_TRANSACTION
+    LEA DX,borrowOK
+    CALL PRINT_STRING
+    CALL DISPLAY_BORROW_RECEIPT
+    CALL PAUSE_SCREEN
+    RET
+
+BORROW_CANCELLED:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+BORROW_BOOK ENDP
+
+; ================================================================
+; FUNCTIONS 3-5 - GROSS FINE, DISCOUNT, AND NET FINE CALCULATIONS
+; Gross fine = overdue days x RM2
+; Discount = gross fine x 20 / 100 when gross fine >= RM20
+; Net fine = gross fine - discount
+; ================================================================
+CALCULATE_FINE PROC
+    ; Input: AX = overdue days. Output variables are updated.
+    MOV tempOverdue,AX
+    MOV BX,2
+    MUL BX
+    MOV tempGross,AX
+    MOV tempDiscount,0
+    CMP AX,20
+    JB NO_FINE_DISCOUNT
+    MOV BX,20
+    MUL BX
+    MOV BX,100
+    XOR DX,DX
+    DIV BX
+    MOV tempDiscount,AX
+NO_FINE_DISCOUNT:
+    MOV AX,tempGross
+    SUB AX,tempDiscount
+    MOV tempNet,AX
+    RET
+CALCULATE_FINE ENDP
+
+DISPLAY_FINE_BREAKDOWN PROC
+    LEA DX,finePolicy
+    CALL PRINT_STRING
+    LEA DX,grossFineMsg
+    CALL PRINT_STRING
+    MOV AX,tempGross
+    CALL PRINT_MONEY
+    LEA DX,discountMsg
+    CALL PRINT_STRING
+    MOV AX,tempDiscount
+    CALL PRINT_MONEY
+    LEA DX,netFineMsg
+    CALL PRINT_STRING
+    MOV AX,tempNet
+    CALL PRINT_MONEY
+    RET
+DISPLAY_FINE_BREAKDOWN ENDP
+
+; ================================================================
+; FUNCTION 6 - RETURN BOOK, RESTORE INVENTORY, UPDATE TOTALS
+; ================================================================
+RETURN_BOOK PROC
+    CMP activeLoan,1
+    JE RETURN_ALLOWED
+    LEA DX,noLoanMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+
+RETURN_ALLOWED:
+    CALL CLEAR_SCREEN
+    LEA DX,returnTitle
+    CALL PRINT_STRING
+    LEA DX,overduePrompt
+    MOV CX,0
+    MOV BX,99
+    CALL READ_NUMBER_RANGE
+    CALL CALCULATE_FINE
+    CALL DISPLAY_FINE_BREAKDOWN
+    LEA DX,returnConfirm
+    CALL READ_YN
+    CMP AL,1
+    JNE RETURN_CANCELLED
+
+    XOR BX,BX
+    MOV BL,currentBook
+    MOV lastReturnedBook,BL
+    PUSH BX
+    DEC BX
+    INC bookAvailable[BX]
+    MOV activeLoan,0
+    MOV currentBook,0
+    MOV loanDays,0
+    MOV renewCount,0
+    INC returnCount
+    MOV AX,tempGross
+    ADD grossFineTotal,AX
+    MOV AX,tempDiscount
+    ADD discountTotal,AX
+    MOV AX,tempNet
+    ADD netFineTotal,AX
+    ADD accountBalance,AX
+    POP BX
+    MOV AL,2
+    XOR DX,DX
+    CALL LOG_TRANSACTION
+    LEA DX,returnOK
+    CALL PRINT_STRING
+    CALL DISPLAY_RETURN_RECEIPT
+    CALL PAUSE_SCREEN
+    RET
+
+RETURN_CANCELLED:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RETURN_BOOK ENDP
+
+; ================================================================
+; FUNCTION 7 - RENEW LOAN AND ADD SEVEN DAYS
+; ================================================================
+RENEW_BOOK PROC
+    CMP activeLoan,1
+    JE CHECK_RENEW_LIMIT
+    LEA DX,noLoanMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+CHECK_RENEW_LIMIT:
+    CMP renewCount,0
+    JE RENEW_ALLOWED
+    LEA DX,renewLimitMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RENEW_ALLOWED:
+    LEA DX,renewConfirm
+    CALL READ_YN
+    CMP AL,1
+    JNE RENEW_CANCELLED
+    ADD loanDays,7
+    MOV renewCount,1
+    INC renewTotal
+    MOV AL,3
+    MOV BL,currentBook
+    XOR DX,DX
+    CALL LOG_TRANSACTION
+    LEA DX,renewOK
+    CALL PRINT_STRING
+    CALL DISPLAY_RENEW_RECEIPT
+    CALL PAUSE_SCREEN
+    RET
+RENEW_CANCELLED:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RENEW_BOOK ENDP
+
+; ================================================================
+; FINE ESTIMATE - VALIDATED CALCULATION WITHOUT DATA MODIFICATION
+; ================================================================
+FINE_CALCULATOR PROC
+    CALL CLEAR_SCREEN
+    LEA DX,fineTitle
+    CALL PRINT_STRING
+    LEA DX,calcOnlyMsg
+    CALL PRINT_STRING
+    LEA DX,overduePrompt
+    MOV CX,0
+    MOV BX,99
+    CALL READ_NUMBER_RANGE
+    CALL CALCULATE_FINE
+    CALL DISPLAY_FINE_BREAKDOWN
+    CALL PAUSE_SCREEN
+    RET
+FINE_CALCULATOR ENDP
+
+; ================================================================
+; COMPLETE FORMATTED REPORT / OUTPUT MODULE
+; ================================================================
+DISPLAY_REPORT PROC
+    CALL CLEAR_SCREEN
+    LEA DX,reportTitle
+    CALL PRINT_STRING
+    LEA DX,memberNameMsg
+    CALL PRINT_STRING
+    LEA DX,memberName
+    CALL PRINT_STRING
+    LEA DX,memberIDMsg
+    CALL PRINT_STRING
+    LEA DX,memberID
+    CALL PRINT_STRING
+    LEA DX,loanStatusMsg
+    CALL PRINT_STRING
+    CMP activeLoan,1
+    JNE REPORT_NO_LOAN
+    LEA DX,activeMsg
+    CALL PRINT_STRING
+    LEA DX,bookTitleMsg
+    CALL PRINT_STRING
+    MOV AL,currentBook
+    CALL PRINT_BOOK_TITLE
+    LEA DX,loanDaysMsg
+    CALL PRINT_STRING
+    MOV AX,loanDays
+    CALL PRINT_NUM
+    JMP REPORT_COUNTS
+REPORT_NO_LOAN:
+    LEA DX,noneMsg
+    CALL PRINT_STRING
+REPORT_COUNTS:
+    CMP reservationBook,0
+    JE REPORT_NO_RESERVATION
+    LEA DX,reservedBookMsg
+    CALL PRINT_STRING
+    MOV AL,reservationBook
+    CALL PRINT_BOOK_TITLE
+REPORT_NO_RESERVATION:
+    LEA DX,borrowCountMsg
+    CALL PRINT_STRING
+    MOV AX,borrowCount
+    CALL PRINT_NUM
+    LEA DX,returnCountMsg
+    CALL PRINT_STRING
+    MOV AX,returnCount
+    CALL PRINT_NUM
+    LEA DX,renewCountMsg
+    CALL PRINT_STRING
+    MOV AX,renewTotal
+    CALL PRINT_NUM
+    LEA DX,grossTotalMsg
+    CALL PRINT_STRING
+    MOV AX,grossFineTotal
+    CALL PRINT_MONEY
+    LEA DX,discountTotMsg
+    CALL PRINT_STRING
+    MOV AX,discountTotal
+    CALL PRINT_MONEY
+    LEA DX,netTotalMsg
+    CALL PRINT_STRING
+    MOV AX,netFineTotal
+    CALL PRINT_MONEY
+    LEA DX,copiesMsg
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[0]
+    ADD AL,bookAvailable[1]
+    ADD AL,bookAvailable[2]
+    ADD AL,bookAvailable[3]
+    ADD AL,bookAvailable[4]
+    ADD AL,bookAvailable[5]
+    ADD AL,bookAvailable[6]
+    ADD AL,bookAvailable[7]
+    ADD AL,bookAvailable[8]
+    ADD AL,bookAvailable[9]
+    CALL PRINT_NUM
+    LEA DX,line
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+DISPLAY_REPORT ENDP
+
+; ================================================================
+; REUSABLE INPUT, VALIDATION, OUTPUT, AND SCREEN PROCEDURES
+; ================================================================
+READ_LINE PROC
+    MOV inputBuffer[1],0
+    LEA DX,inputBuffer
+    MOV AH,0AH
+    INT 21H
+    RET
+READ_LINE ENDP
+
+READ_PASSWORD PROC
+    PUSH AX
+    PUSH BX
+    PUSH DX
+    XOR BX,BX
+PASSWORD_KEY:
+    MOV AH,08H
+    INT 21H
+    CMP AL,13
+    JE PASSWORD_DONE
+    CMP AL,8
+    JE PASSWORD_BACKSPACE
+    CMP BX,10
+    JAE PASSWORD_KEY
+    MOV passwordBuffer[BX+2],AL
+    INC BX
+    MOV DL,'*'
+    MOV AH,02H
+    INT 21H
+    JMP PASSWORD_KEY
+PASSWORD_BACKSPACE:
+    CMP BX,0
+    JE PASSWORD_KEY
+    DEC BX
+    MOV DL,8
+    MOV AH,02H
+    INT 21H
+    MOV DL,' '
+    INT 21H
+    MOV DL,8
+    INT 21H
+    JMP PASSWORD_KEY
+PASSWORD_DONE:
+    MOV passwordBuffer[1],BL
+    LEA DX,crlf
+    CALL PRINT_STRING
+    POP DX
+    POP BX
+    POP AX
+    RET
+READ_PASSWORD ENDP
+
+CHECK_USERNAME PROC
+    MOV AL,0
+    CMP inputBuffer[1],5
+    JNE USER_CHECK_DONE
+    LEA SI,inputBuffer+2
+    LEA DI,validUser
+    MOV CX,5
+USER_COMPARE:
+    MOV AH,[SI]
+    CMP AH,[DI]
+    JNE USER_CHECK_DONE
+    INC SI
+    INC DI
+    LOOP USER_COMPARE
+    MOV AL,1
+USER_CHECK_DONE:
+    RET
+CHECK_USERNAME ENDP
+
+CHECK_PASSWORD PROC
+    MOV AL,0
+    CMP passwordBuffer[1],4
+    JNE PASS_CHECK_DONE
+    LEA SI,passwordBuffer+2
+    LEA DI,validPass
+    MOV CX,4
+PASS_COMPARE:
+    MOV AH,[SI]
+    CMP AH,[DI]
+    JNE PASS_CHECK_DONE
+    INC SI
+    INC DI
+    LOOP PASS_COMPARE
+    MOV AL,1
+PASS_CHECK_DONE:
+    RET
+CHECK_PASSWORD ENDP
+
+READ_NUMBER_RANGE PROC
+    ; Input: DX = prompt address, CX = minimum, BX = maximum
+    ; Output: AX = validated number
+    MOV tempMin,CX
+    MOV tempMax,BX
+    PUSH DX
+NUMBER_RETRY:
+    POP DX
+    PUSH DX
+    CALL PRINT_STRING
+    CALL READ_LINE
+    CALL PARSE_NUMBER
+    JC NUMBER_FORMAT_ERROR
+    CMP AX,tempMin
+    JB NUMBER_RANGE_ERROR
+    CMP AX,tempMax
+    JA NUMBER_RANGE_ERROR
+    POP DX
+    RET
+NUMBER_FORMAT_ERROR:
+    LEA DX,invalidNumber
+    CALL PRINT_STRING
+    JMP NUMBER_RETRY
+NUMBER_RANGE_ERROR:
+    LEA DX,invalidChoice
+    CALL PRINT_STRING
+    JMP NUMBER_RETRY
+READ_NUMBER_RANGE ENDP
+
+PARSE_NUMBER PROC
+    ; Converts inputBuffer to an unsigned integer (0-9999).
+    ; CF=0 success with AX=value; CF=1 invalid.
+    CMP inputBuffer[1],0
+    JE PARSE_BAD
+    CMP inputBuffer[1],4
+    JA PARSE_BAD
+    LEA SI,inputBuffer+2
+    XOR CH,CH
+    MOV CL,inputBuffer[1]
+    XOR BX,BX
+PARSE_LOOP:
+    MOV AL,[SI]
+    CMP AL,'0'
+    JB PARSE_BAD
+    CMP AL,'9'
+    JA PARSE_BAD
+    SUB AL,'0'
+    XOR AH,AH
+    PUSH AX
+    MOV AX,BX
+    MOV DX,10
+    MUL DX
+    MOV BX,AX
+    POP AX
+    ADD BX,AX
+    INC SI
+    LOOP PARSE_LOOP
+    MOV AX,BX
+    CLC
+    RET
+PARSE_BAD:
+    STC
+    RET
+PARSE_NUMBER ENDP
+
+READ_YN PROC
+    ; Input: DX = prompt address. Output: AL=1 for Yes, AL=0 for No.
+    PUSH DX
+YN_RETRY:
+    POP DX
+    PUSH DX
+    CALL PRINT_STRING
+    CALL READ_LINE
+    CMP inputBuffer[1],1
+    JNE YN_INVALID
+    MOV AL,inputBuffer[2]
+    CMP AL,'Y'
+    JE YN_YES
+    CMP AL,'y'
+    JE YN_YES
+    CMP AL,'N'
+    JE YN_NO
+    CMP AL,'n'
+    JE YN_NO
+YN_INVALID:
+    LEA DX,ynError
+    CALL PRINT_STRING
+    JMP YN_RETRY
+YN_YES:
+    POP DX
+    MOV AL,1
+    RET
+YN_NO:
+    POP DX
+    MOV AL,0
+    RET
+READ_YN ENDP
+
+COPY_TO_DOLLAR_STRING PROC
+    ; SI=source, DI=destination, CX=length
+COPY_STRING_LOOP:
+    MOV AL,[SI]
+    MOV [DI],AL
+    INC SI
+    INC DI
+    LOOP COPY_STRING_LOOP
+    MOV BYTE PTR [DI],'$'
+    RET
+COPY_TO_DOLLAR_STRING ENDP
+
+PRINT_BOOK_TITLE PROC
+    CMP AL,1
+    JE TITLE_ONE
+    CMP AL,2
+    JE TITLE_TWO
+    CMP AL,3
+    JE TITLE_THREE
+    CMP AL,4
+    JE TITLE_FOUR
+    CMP AL,5
+    JE TITLE_FIVE
+    CMP AL,6
+    JE TITLE_SIX
+    CMP AL,7
+    JE TITLE_SEVEN
+    CMP AL,8
+    JE TITLE_EIGHT
+    CMP AL,9
+    JE TITLE_NINE
+    LEA DX,book10+7
+    JMP TITLE_PRINT
+TITLE_ONE:
+    LEA DX,book1+7
+    JMP TITLE_PRINT
+TITLE_TWO:
+    LEA DX,book2+7
+    JMP TITLE_PRINT
+TITLE_THREE:
+    LEA DX,book3+7
+    JMP TITLE_PRINT
+TITLE_FOUR:
+    LEA DX,book4+7
+    JMP TITLE_PRINT
+TITLE_FIVE:
+    LEA DX,book5+7
+    JMP TITLE_PRINT
+TITLE_SIX:
+    LEA DX,book6+7
+    JMP TITLE_PRINT
+TITLE_SEVEN:
+    LEA DX,book7+7
+    JMP TITLE_PRINT
+TITLE_EIGHT:
+    LEA DX,book8+7
+    JMP TITLE_PRINT
+TITLE_NINE:
+    LEA DX,book9+7
+TITLE_PRINT:
+    CALL PRINT_STRING
+    RET
+PRINT_BOOK_TITLE ENDP
+
+PRINT_STRING PROC
+    MOV AH,09H
+    INT 21H
+    RET
+PRINT_STRING ENDP
+
+RESET_MEMBER_SESSION PROC
+    ; Begin each authenticated demo session with a clean member record.
+    ; If the previous member logged out with an active loan, restore its copy.
+    CMP activeLoan,1
+    JNE SESSION_COUNTS
+    XOR BX,BX
+    MOV BL,currentBook
+    DEC BX
+    INC bookAvailable[BX]
+SESSION_COUNTS:
+    MOV activeLoan,0
+    MOV currentBook,0
+    MOV loanDays,0
+    MOV renewCount,0
+    MOV borrowCount,0
+    MOV returnCount,0
+    MOV renewTotal,0
+    MOV grossFineTotal,0
+    MOV discountTotal,0
+    MOV netFineTotal,0
+    MOV accountBalance,0
+    MOV paymentTotal,0
+    MOV lostCount,0
+    MOV historyCount,0
+    MOV reservationBook,0
+    MOV reservationCount,0
+    LEA DI,historyType
+    MOV CX,20
+    XOR AL,AL
+RESET_HISTORY_TYPE:
+    MOV [DI],AL
+    INC DI
+    LOOP RESET_HISTORY_TYPE
+    LEA DI,historyBook
+    MOV CX,20
+RESET_HISTORY_BOOK:
+    MOV [DI],AL
+    INC DI
+    LOOP RESET_HISTORY_BOOK
+    LEA DI,historyAmount
+    MOV CX,40
+RESET_HISTORY_AMOUNT:
+    MOV [DI],AL
+    INC DI
+    LOOP RESET_HISTORY_AMOUNT
+    RET
+RESET_MEMBER_SESSION ENDP
+
+PRINT_NUM PROC
+    ; Prints unsigned number in AX.
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    XOR CX,CX
+    MOV BX,10
+    CMP AX,0
+    JNE CONVERT_DIGITS
+    MOV DL,'0'
+    MOV AH,02H
+    INT 21H
+    JMP NUMBER_PRINTED
+CONVERT_DIGITS:
+    XOR DX,DX
+    DIV BX
+    PUSH DX
+    INC CX
+    CMP AX,0
+    JNE CONVERT_DIGITS
+PRINT_DIGITS:
+    POP DX
+    ADD DL,'0'
+    MOV AH,02H
+    INT 21H
+    LOOP PRINT_DIGITS
+NUMBER_PRINTED:
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+PRINT_NUM ENDP
+
+PRINT_MONEY PROC
+    ; Whole-ringgit values are displayed with .00 for a clear receipt format.
+    CALL PRINT_NUM
+    PUSH DX
+    MOV DL,'.'
+    MOV AH,02H
+    INT 21H
+    MOV DL,'0'
+    INT 21H
+    INT 21H
+    POP DX
+    RET
+PRINT_MONEY ENDP
+
+CLEAR_SCREEN PROC
+    MOV AX,0003H
+    INT 10H
+    RET
+CLEAR_SCREEN ENDP
+
+PAUSE_SCREEN PROC
+    LEA DX,pressKeyMsg
+    CALL PRINT_STRING
+    MOV AH,08H
+    INT 21H
+    RET
+PAUSE_SCREEN ENDP
+
+; ================================================================
+; ENHANCED FUNCTION - CASE-INSENSITIVE PARTIAL TITLE SEARCH
+; The routine copies the validated keyword into a zero-terminated
+; buffer and tests every original catalogue title.  No DOS-specific
+; string extension is needed, so it remains compatible with 8086.
+; ================================================================
+SEARCH_CATALOGUE PROC
+SEARCH_AGAIN:
+    CALL CLEAR_SCREEN
+    LEA DX,searchTitle
+    CALL PRINT_STRING
+    LEA DX,searchHintMsg
+    CALL PRINT_STRING
+    LEA DX,searchPrompt
+    CALL PRINT_STRING
+    CALL READ_LINE
+    CMP inputBuffer[1],0
+    JNE SEARCH_LENGTH_NOT_ZERO
+    JMP SEARCH_EMPTY
+SEARCH_LENGTH_NOT_ZERO:
+    CMP inputBuffer[1],20
+    JBE SEARCH_LENGTH_VALID
+    JMP SEARCH_EMPTY
+SEARCH_LENGTH_VALID:
+
+    LEA SI,inputBuffer+2
+    LEA DI,searchKeyword
+    XOR CH,CH
+    MOV CL,inputBuffer[1]
+SEARCH_COPY_LOOP:
+    MOV AL,[SI]
+    CALL TO_UPPER_AL
+    MOV [DI],AL
+    INC SI
+    INC DI
+    LOOP SEARCH_COPY_LOOP
+    MOV BYTE PTR [DI],0
+
+    MOV searchFound,0
+    LEA DX,searchResultMsg
+    CALL PRINT_STRING
+
+    LEA SI,searchBook1
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_2
+    LEA DX,book1
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_2:
+    LEA SI,searchBook2
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_3
+    LEA DX,book2
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_3:
+    LEA SI,searchBook3
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_4
+    LEA DX,book3
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_4:
+    LEA SI,searchBook4
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_5
+    LEA DX,book4
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_5:
+    LEA SI,searchBook5
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_6
+    LEA DX,book5
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_6:
+    LEA SI,searchBook6
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_7
+    LEA DX,book6
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_7:
+    LEA SI,searchBook7
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_8
+    LEA DX,book7
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_8:
+    LEA SI,searchBook8
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_9
+    LEA DX,book8
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_9:
+    LEA SI,searchBook9
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_TEST_10
+    LEA DX,book9
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_TEST_10:
+    LEA SI,searchBook10
+    LEA DI,searchKeyword
+    CALL CONTAINS_TEXT
+    CMP AL,1
+    JNE SEARCH_FINISH
+    LEA DX,book10
+    CALL PRINT_STRING
+    MOV searchFound,1
+
+SEARCH_FINISH:
+    CMP searchFound,1
+    JE SEARCH_PAUSE
+    LEA DX,searchNoneMsg
+    CALL PRINT_STRING
+SEARCH_PAUSE:
+    CALL PAUSE_SCREEN
+    RET
+
+SEARCH_EMPTY:
+    LEA DX,searchEmptyMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    JMP SEARCH_AGAIN
+SEARCH_CATALOGUE ENDP
+
+; ================================================================
+; CONTAINS_TEXT
+; SI = address of zero-terminated title
+; DI = address of uppercase zero-terminated keyword
+; AL = 1 when the keyword occurs, otherwise AL = 0
+; ================================================================
+CONTAINS_TEXT PROC
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    PUSH DI
+    MOV BX,SI
+
+CONTAINS_NEXT_START:
+    MOV AL,[BX]
+    CMP AL,0
+    JE CONTAINS_NOT_FOUND
+    MOV SI,BX
+    PUSH DI
+
+CONTAINS_COMPARE:
+    MOV DL,[DI]
+    CMP DL,0
+    JE CONTAINS_FOUND_POP
+    MOV AL,[SI]
+    CMP AL,0
+    JE CONTAINS_MISMATCH
+    CALL TO_UPPER_AL
+    CMP AL,DL
+    JNE CONTAINS_MISMATCH
+    INC SI
+    INC DI
+    JMP CONTAINS_COMPARE
+
+CONTAINS_MISMATCH:
+    POP DI
+    INC BX
+    JMP CONTAINS_NEXT_START
+
+CONTAINS_FOUND_POP:
+    POP DI
+    MOV AL,1
+    JMP CONTAINS_EXIT
+
+CONTAINS_NOT_FOUND:
+    MOV AL,0
+
+CONTAINS_EXIT:
+    POP DI
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    RET
+CONTAINS_TEXT ENDP
+
+; ================================================================
+; TO_UPPER_AL - converts ASCII a-z to A-Z, preserves other bytes.
+; ================================================================
+TO_UPPER_AL PROC
+    CMP AL,'a'
+    JB UPPER_DONE
+    CMP AL,'z'
+    JA UPPER_DONE
+    SUB AL,20H
+UPPER_DONE:
+    RET
+TO_UPPER_AL ENDP
+
+; ================================================================
+; DISPLAY_HELP - explains operating rules and validation features.
+; ================================================================
+DISPLAY_HELP PROC
+    CALL CLEAR_SCREEN
+    LEA DX,helpTitle
+    CALL PRINT_STRING
+    LEA DX,helpText
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+DISPLAY_HELP ENDP
+
+ACCOUNT_SERVICES PROC
+ACCOUNT_MENU_LOOP:
+    CALL CLEAR_SCREEN
+    LEA DX,accountMenu
+    MOV CX,1
+    MOV BX,16
+    CALL READ_NUMBER_RANGE
+    CMP AX,1
+    JE ACCOUNT_EDIT_NAME
+    CMP AX,2
+    JE ACCOUNT_EDIT_ID
+    CMP AX,3
+    JE ACCOUNT_VIEW_BALANCE
+    CMP AX,4
+    JE ACCOUNT_PAY_BALANCE
+    CMP AX,5
+    JE ACCOUNT_REPORT_LOST
+    CMP AX,6
+    JE ACCOUNT_VIEW_HISTORY
+    CMP AX,7
+    JE ACCOUNT_VIEW_INVENTORY
+    CMP AX,8
+    JE ACCOUNT_RESERVE
+    CMP AX,9
+    JE ACCOUNT_CANCEL_RESERVE
+    CMP AX,10
+    JE ACCOUNT_MAINTENANCE
+    CMP AX,11
+    JE ACCOUNT_INTEGRITY
+    CMP AX,12
+    JE ACCOUNT_BACKUP
+    CMP AX,13
+    JE ACCOUNT_RESTORE
+    CMP AX,14
+    JE ACCOUNT_DETAILED_REPORT
+    CMP AX,15
+    JE ACCOUNT_DUE_DATE
+    RET
+ACCOUNT_EDIT_NAME:
+    CALL EDIT_MEMBER_NAME
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_EDIT_ID:
+    CALL EDIT_MEMBER_ID
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_VIEW_BALANCE:
+    CALL DISPLAY_BALANCE
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_PAY_BALANCE:
+    CALL PAY_BALANCE
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_REPORT_LOST:
+    CALL REPORT_LOST_BOOK
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_VIEW_HISTORY:
+    CALL DISPLAY_HISTORY
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_VIEW_INVENTORY:
+    CALL DISPLAY_INVENTORY_STATS
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_RESERVE:
+    CALL RESERVE_BOOK
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_CANCEL_RESERVE:
+    CALL CANCEL_RESERVATION
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_MAINTENANCE:
+    CALL INVENTORY_MAINTENANCE
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_INTEGRITY:
+    CALL SYSTEM_INTEGRITY_CHECK
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_BACKUP:
+    CALL CREATE_SESSION_BACKUP
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_RESTORE:
+    CALL RESTORE_SESSION_BACKUP
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_DETAILED_REPORT:
+    CALL DISPLAY_DETAILED_REPORT
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_DUE_DATE:
+    CALL LOAN_DUE_DATE_CALCULATOR
+    JMP ACCOUNT_MENU_LOOP
+ACCOUNT_SERVICES ENDP
+
+EDIT_MEMBER_NAME PROC
+    CALL CLEAR_SCREEN
+    LEA DX,editNameTitle
+    CALL PRINT_STRING
+    LEA SI,memberName
+    LEA DI,oldMemberName
+    MOV CX,21
+    CALL COPY_FIXED_BYTES
+EDIT_NAME_INPUT:
+    LEA DX,namePrompt
+    CALL PRINT_STRING
+    CALL READ_LINE
+    MOV AL,inputBuffer[1]
+    CMP AL,1
+    JB EDIT_NAME_INVALID
+    CMP AL,20
+    JA EDIT_NAME_INVALID
+    CALL VALIDATE_PERSON_NAME
+    CMP AL,1
+    JNE EDIT_NAME_INVALID
+    LEA SI,inputBuffer+2
+    LEA DI,memberName
+    XOR CH,CH
+    MOV CL,inputBuffer[1]
+    CALL COPY_TO_DOLLAR_STRING
+    LEA DX,editConfirmMsg
+    CALL READ_YN
+    CMP AL,1
+    JE EDIT_NAME_SAVED
+    LEA SI,oldMemberName
+    LEA DI,memberName
+    MOV CX,21
+    CALL COPY_FIXED_BYTES
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+EDIT_NAME_INVALID:
+    LEA DX,nameError
+    CALL PRINT_STRING
+    JMP EDIT_NAME_INPUT
+EDIT_NAME_SAVED:
+    LEA DX,editOKMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+EDIT_MEMBER_NAME ENDP
+
+EDIT_MEMBER_ID PROC
+    CALL CLEAR_SCREEN
+    LEA DX,editIDTitle
+    CALL PRINT_STRING
+    LEA SI,memberID
+    LEA DI,oldMemberID
+    MOV CX,5
+    CALL COPY_FIXED_BYTES
+EDIT_ID_INPUT:
+    LEA DX,idPrompt
+    CALL PRINT_STRING
+    CALL READ_LINE
+    CALL VALIDATE_MEMBER_ID_BUFFER
+    CMP AL,1
+    JNE EDIT_ID_INVALID
+    LEA SI,inputBuffer+2
+    LEA DI,memberID
+    MOV CX,4
+    CALL COPY_TO_DOLLAR_STRING
+    LEA DX,editConfirmMsg
+    CALL READ_YN
+    CMP AL,1
+    JE EDIT_ID_SAVED
+    LEA SI,oldMemberID
+    LEA DI,memberID
+    MOV CX,5
+    CALL COPY_FIXED_BYTES
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+EDIT_ID_INVALID:
+    LEA DX,idError
+    CALL PRINT_STRING
+    JMP EDIT_ID_INPUT
+EDIT_ID_SAVED:
+    LEA DX,editOKMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+EDIT_MEMBER_ID ENDP
+
+VALIDATE_PERSON_NAME PROC
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    LEA SI,inputBuffer+2
+    XOR CH,CH
+    MOV CL,inputBuffer[1]
+    XOR BX,BX
+VALIDATE_NAME_LOOP:
+    MOV AL,[SI]
+    CMP AL,' '
+    JE VALIDATE_NAME_SPACE
+    CMP AL,'A'
+    JB VALIDATE_NAME_BAD
+    CMP AL,'Z'
+    JBE VALIDATE_NAME_LETTER
+    CMP AL,'a'
+    JB VALIDATE_NAME_BAD
+    CMP AL,'z'
+    JA VALIDATE_NAME_BAD
+VALIDATE_NAME_LETTER:
+    MOV BX,1
+    JMP VALIDATE_NAME_NEXT
+VALIDATE_NAME_SPACE:
+    CMP BX,0
+    JE VALIDATE_NAME_BAD
+VALIDATE_NAME_NEXT:
+    INC SI
+    LOOP VALIDATE_NAME_LOOP
+    CMP BX,1
+    JNE VALIDATE_NAME_BAD
+    MOV AL,1
+    JMP VALIDATE_NAME_EXIT
+VALIDATE_NAME_BAD:
+    MOV AL,0
+VALIDATE_NAME_EXIT:
+    POP SI
+    POP CX
+    POP BX
+    RET
+VALIDATE_PERSON_NAME ENDP
+
+VALIDATE_MEMBER_ID_BUFFER PROC
+    CMP inputBuffer[1],4
+    JNE VALIDATE_ID_BAD
+    MOV AL,inputBuffer[2]
+    CMP AL,'l'
+    JNE VALIDATE_ID_CAPITAL
+    MOV inputBuffer[2],'L'
+    JMP VALIDATE_ID_DIGITS
+VALIDATE_ID_CAPITAL:
+    CMP AL,'L'
+    JNE VALIDATE_ID_BAD
+VALIDATE_ID_DIGITS:
+    MOV SI,3
+    MOV CX,3
+VALIDATE_ID_LOOP:
+    MOV AL,inputBuffer[SI]
+    CMP AL,'0'
+    JB VALIDATE_ID_BAD
+    CMP AL,'9'
+    JA VALIDATE_ID_BAD
+    INC SI
+    LOOP VALIDATE_ID_LOOP
+    MOV AL,1
+    RET
+VALIDATE_ID_BAD:
+    MOV AL,0
+    RET
+VALIDATE_MEMBER_ID_BUFFER ENDP
+
+COPY_FIXED_BYTES PROC
+COPY_FIXED_LOOP:
+    MOV AL,[SI]
+    MOV [DI],AL
+    INC SI
+    INC DI
+    LOOP COPY_FIXED_LOOP
+    RET
+COPY_FIXED_BYTES ENDP
+
+DISPLAY_BALANCE PROC
+    CALL CLEAR_SCREEN
+    LEA DX,balanceTitle
+    CALL PRINT_STRING
+    CMP accountBalance,0
+    JE DISPLAY_NO_BALANCE
+    LEA DX,balanceMsg
+    CALL PRINT_STRING
+    MOV AX,accountBalance
+    CALL PRINT_MONEY
+    JMP DISPLAY_BALANCE_DONE
+DISPLAY_NO_BALANCE:
+    LEA DX,noBalanceMsg
+    CALL PRINT_STRING
+DISPLAY_BALANCE_DONE:
+    CALL PAUSE_SCREEN
+    RET
+DISPLAY_BALANCE ENDP
+
+PAY_BALANCE PROC
+    CALL CLEAR_SCREEN
+    LEA DX,balanceTitle
+    CALL PRINT_STRING
+    CMP accountBalance,0
+    JNE PAYMENT_ALLOWED
+    LEA DX,noBalanceMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+PAYMENT_ALLOWED:
+    LEA DX,balanceMsg
+    CALL PRINT_STRING
+    MOV AX,accountBalance
+    CALL PRINT_MONEY
+PAYMENT_INPUT:
+    LEA DX,payPrompt
+    MOV CX,1
+    MOV BX,999
+    CALL READ_NUMBER_RANGE
+    CMP AX,accountBalance
+    JBE PAYMENT_AMOUNT_ALLOWED
+    JMP PAYMENT_TOO_HIGH
+PAYMENT_AMOUNT_ALLOWED:
+    PUSH AX
+    LEA DX,cardNoticeMsg
+    CALL PRINT_STRING
+PAYMENT_CARD_INPUT:
+    LEA DX,cardPrompt
+    CALL PRINT_STRING
+    CALL READ_LINE
+    CALL VALIDATE_CARD_NUMBER
+    CMP AL,1
+    JE PAYMENT_CARD_VALID
+    LEA DX,cardErrorMsg
+    CALL PRINT_STRING
+    JMP PAYMENT_CARD_INPUT
+PAYMENT_CARD_VALID:
+    CALL SAVE_CARD_LAST_FOUR
+PAYMENT_PIN_INPUT:
+    LEA DX,pinPrompt
+    CALL PRINT_STRING
+    CALL READ_PASSWORD
+    CALL VALIDATE_CARD_PIN
+    CMP AL,1
+    JE PAYMENT_PIN_VALID
+    LEA DX,pinErrorMsg
+    CALL PRINT_STRING
+    JMP PAYMENT_PIN_INPUT
+PAYMENT_PIN_VALID:
+    LEA DX,cardConfirmMsg
+    CALL READ_YN
+    CMP AL,1
+    JNE PAYMENT_CANCELLED
+    POP AX
+    MOV lastPayment,AX
+    SUB accountBalance,AX
+    ADD paymentTotal,AX
+    MOV DX,AX
+    MOV AL,4
+    XOR BX,BX
+    CALL LOG_TRANSACTION
+    LEA DX,payOKMsg
+    CALL PRINT_STRING
+    CALL DISPLAY_PAYMENT_RECEIPT
+    CALL PAUSE_SCREEN
+    RET
+PAYMENT_CANCELLED:
+    POP AX
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+PAYMENT_TOO_HIGH:
+    LEA DX,payTooMuchMsg
+    CALL PRINT_STRING
+    JMP PAYMENT_INPUT
+PAY_BALANCE ENDP
+
+REPORT_LOST_BOOK PROC
+    CALL CLEAR_SCREEN
+    LEA DX,lostTitle
+    CALL PRINT_STRING
+    CMP activeLoan,1
+    JE LOST_ALLOWED
+    LEA DX,noLoanMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+LOST_ALLOWED:
+    LEA DX,bookTitleMsg
+    CALL PRINT_STRING
+    MOV AL,currentBook
+    CALL PRINT_BOOK_TITLE
+    LEA DX,lostPolicyMsg
+    CALL PRINT_STRING
+    LEA DX,lostConfirmMsg
+    CALL READ_YN
+    CMP AL,1
+    JNE LOST_CANCELLED
+    MOV BL,currentBook
+    MOV activeLoan,0
+    MOV currentBook,0
+    MOV loanDays,0
+    MOV renewCount,0
+    INC lostCount
+    ADD accountBalance,50
+    MOV AL,5
+    XOR DX,DX
+    CALL LOG_TRANSACTION
+    LEA DX,lostOKMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+LOST_CANCELLED:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+REPORT_LOST_BOOK ENDP
+
+LOG_TRANSACTION PROC
+    MOV logTempType,AL
+    MOV logTempBook,BL
+    MOV logTempAmount,DX
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    CMP historyCount,20
+    JAE LOG_SHIFT_HISTORY
+    XOR AX,AX
+    MOV AL,historyCount
+    MOV SI,AX
+    JMP LOG_STORE
+LOG_SHIFT_HISTORY:
+    XOR SI,SI
+    MOV CX,19
+LOG_SHIFT_LOOP:
+    MOV AH,historyType[SI+1]
+    MOV historyType[SI],AH
+    MOV AH,historyBook[SI+1]
+    MOV historyBook[SI],AH
+    MOV BX,SI
+    SHL BX,1
+    MOV AX,historyAmount[BX+2]
+    MOV historyAmount[BX],AX
+    INC SI
+    LOOP LOG_SHIFT_LOOP
+    MOV SI,19
+    JMP LOG_STORE
+LOG_STORE:
+    MOV AL,logTempType
+    MOV historyType[SI],AL
+    MOV AL,logTempBook
+    MOV historyBook[SI],AL
+    MOV BX,SI
+    SHL BX,1
+    MOV AX,logTempAmount
+    MOV historyAmount[BX],AX
+    CMP historyCount,20
+    JAE LOG_DONE
+    INC historyCount
+LOG_DONE:
+    POP SI
+    POP CX
+    POP BX
+    POP AX
+    RET
+LOG_TRANSACTION ENDP
+
+DISPLAY_HISTORY PROC
+    CALL CLEAR_SCREEN
+    LEA DX,historyTitle
+    CALL PRINT_STRING
+    CMP historyCount,0
+    JNE HISTORY_HAS_DATA
+    LEA DX,historyEmptyMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+HISTORY_HAS_DATA:
+    LEA DX,historyHeader
+    CALL PRINT_STRING
+    XOR SI,SI
+HISTORY_DISPLAY_LOOP:
+    LEA DX,crlf
+    CALL PRINT_STRING
+    MOV AX,SI
+    INC AX
+    CALL PRINT_NUM
+    MOV DL,'.'
+    MOV AH,02H
+    INT 21H
+    MOV DL,' '
+    INT 21H
+    MOV AL,historyType[SI]
+    CMP AL,1
+    JE HISTORY_PRINT_BORROW
+    CMP AL,2
+    JE HISTORY_PRINT_RETURN
+    CMP AL,3
+    JE HISTORY_PRINT_RENEW
+    CMP AL,4
+    JE HISTORY_PRINT_PAYMENT
+    LEA DX,histLostMsg
+    CALL PRINT_STRING
+    JMP HISTORY_PRINT_BOOK
+HISTORY_PRINT_BORROW:
+    LEA DX,histBorrowMsg
+    CALL PRINT_STRING
+    JMP HISTORY_PRINT_BOOK
+HISTORY_PRINT_RETURN:
+    LEA DX,histReturnMsg
+    CALL PRINT_STRING
+    JMP HISTORY_PRINT_BOOK
+HISTORY_PRINT_RENEW:
+    LEA DX,histRenewMsg
+    CALL PRINT_STRING
+    JMP HISTORY_PRINT_BOOK
+HISTORY_PRINT_PAYMENT:
+    LEA DX,histPaymentMsg
+    CALL PRINT_STRING
+    MOV BX,SI
+    SHL BX,1
+    MOV AX,historyAmount[BX]
+    CALL PRINT_MONEY
+    JMP HISTORY_NEXT
+HISTORY_PRINT_BOOK:
+    MOV AL,historyBook[SI]
+    CALL PRINT_BOOK_TITLE
+HISTORY_NEXT:
+    INC SI
+    XOR AX,AX
+    MOV AL,historyCount
+    CMP SI,AX
+    JB HISTORY_DISPLAY_LOOP
+    CALL PAUSE_SCREEN
+    RET
+DISPLAY_HISTORY ENDP
+
+DISPLAY_INVENTORY_STATS PROC
+    CALL CLEAR_SCREEN
+    LEA DX,inventoryTitle
+    CALL PRINT_STRING
+    LEA DX,totalTitlesMsg
+    CALL PRINT_STRING
+    MOV AX,10
+    CALL PRINT_NUM
+    XOR SI,SI
+    XOR BX,BX
+    XOR CX,CX
+INVENTORY_SUM_LOOP:
+    XOR AX,AX
+    MOV AL,bookAvailable[SI]
+    ADD BX,AX
+    CMP AL,0
+    JNE INVENTORY_NOT_ZERO
+    INC CX
+INVENTORY_NOT_ZERO:
+    INC SI
+    CMP SI,10
+    JB INVENTORY_SUM_LOOP
+    LEA DX,totalCopiesMsg
+    CALL PRINT_STRING
+    MOV AX,BX
+    CALL PRINT_NUM
+    LEA DX,borrowedCopiesMsg
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,activeLoan
+    CALL PRINT_NUM
+    LEA DX,zeroStockMsg
+    CALL PRINT_STRING
+    MOV AX,CX
+    CALL PRINT_NUM
+    CALL PAUSE_SCREEN
+    RET
+DISPLAY_INVENTORY_STATS ENDP
+
+RESERVE_BOOK PROC
+    CALL CLEAR_SCREEN
+    LEA DX,reservationTitle
+    CALL PRINT_STRING
+    CMP reservationBook,0
+    JE RESERVATION_ALLOWED
+    LEA DX,reserveExistsMsg
+    CALL PRINT_STRING
+    LEA DX,reservedBookMsg
+    CALL PRINT_STRING
+    MOV AL,reservationBook
+    CALL PRINT_BOOK_TITLE
+    CALL PAUSE_SCREEN
+    RET
+RESERVATION_ALLOWED:
+    LEA DX,reserveChooseMsg
+    MOV CX,1
+    MOV BX,10
+    CALL READ_NUMBER_RANGE
+    MOV SI,AX
+    DEC SI
+    CMP bookAvailable[SI],0
+    JE RESERVATION_NO_STOCK
+    LEA DX,reserveStockMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RESERVATION_NO_STOCK:
+    PUSH SI
+    LEA DX,reserveConfirmMsg
+    CALL READ_YN
+    POP SI
+    CMP AL,1
+    JNE RESERVATION_CANCELLED
+    INC SI
+    MOV AX,SI
+    MOV reservationBook,AL
+    INC reservationCount
+    LEA DX,reserveOKMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RESERVATION_CANCELLED:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RESERVE_BOOK ENDP
+
+CANCEL_RESERVATION PROC
+    CALL CLEAR_SCREEN
+    LEA DX,reservationTitle
+    CALL PRINT_STRING
+    CMP reservationBook,0
+    JNE CANCEL_RESERVE_ALLOWED
+    LEA DX,noReserveMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+CANCEL_RESERVE_ALLOWED:
+    LEA DX,reservedBookMsg
+    CALL PRINT_STRING
+    MOV AL,reservationBook
+    CALL PRINT_BOOK_TITLE
+    LEA DX,cancelReserveMsg
+    CALL READ_YN
+    CMP AL,1
+    JNE CANCEL_RESERVE_ABORT
+    MOV reservationBook,0
+    LEA DX,cancelReserveOK
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+CANCEL_RESERVE_ABORT:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+CANCEL_RESERVATION ENDP
+
+INVENTORY_MAINTENANCE PROC
+    CALL CLEAR_SCREEN
+    LEA DX,maintenanceTitle
+    CALL PRINT_STRING
+    CALL DISPLAY_CATALOGUE_NO_PAUSE
+    LEA DX,maintenanceBookMsg
+    MOV CX,1
+    MOV BX,10
+    CALL READ_NUMBER_RANGE
+    MOV SI,AX
+    DEC SI
+    MOV AL,bookAvailable[SI]
+    MOV oldStock,AL
+    PUSH SI
+    LEA DX,maintenanceCopiesMsg
+    MOV CX,0
+    MOV BX,9
+    CALL READ_NUMBER_RANGE
+    MOV DX,AX
+    POP SI
+    PUSH SI
+    PUSH DX
+    LEA DX,maintenanceConfirm
+    CALL READ_YN
+    CMP AL,1
+    JNE MAINTENANCE_CANCELLED
+    POP DX
+    POP SI
+    MOV AX,DX
+    MOV bookAvailable[SI],AL
+    LEA DX,maintenanceOK
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+MAINTENANCE_CANCELLED:
+    POP DX
+    POP SI
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+INVENTORY_MAINTENANCE ENDP
+
+DISPLAY_CATALOGUE_NO_PAUSE PROC
+    LEA DX,bookHeader
+    CALL PRINT_STRING
+    LEA DX,shortLine
+    CALL PRINT_STRING
+    LEA DX,book1
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[0]
+    CALL PRINT_NUM
+    LEA DX,book2
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[1]
+    CALL PRINT_NUM
+    LEA DX,book3
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[2]
+    CALL PRINT_NUM
+    LEA DX,book4
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[3]
+    CALL PRINT_NUM
+    LEA DX,book5
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[4]
+    CALL PRINT_NUM
+    LEA DX,book6
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[5]
+    CALL PRINT_NUM
+    LEA DX,book7
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[6]
+    CALL PRINT_NUM
+    LEA DX,book8
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[7]
+    CALL PRINT_NUM
+    LEA DX,book9
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[8]
+    CALL PRINT_NUM
+    LEA DX,book10
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,bookAvailable[9]
+    CALL PRINT_NUM
+    CALL PRINT_CATALOGUE_TOTALS
+    RET
+DISPLAY_CATALOGUE_NO_PAUSE ENDP
+
+SYSTEM_INTEGRITY_CHECK PROC
+    CALL CLEAR_SCREEN
+    LEA DX,integrityTitle
+    CALL PRINT_STRING
+    MOV integrityChecks,0
+    MOV integrityRepairs,0
+    CALL CHECK_INVENTORY_INTEGRITY
+    CALL CHECK_LOAN_INTEGRITY
+    CALL CHECK_RESERVATION_INTEGRITY
+    CALL CHECK_HISTORY_INTEGRITY
+    CALL CHECK_FINANCIAL_INTEGRITY
+    LEA DX,integrityChecksMsg
+    CALL PRINT_STRING
+    MOV AX,integrityChecks
+    CALL PRINT_NUM
+    LEA DX,integrityRepairsMsg
+    CALL PRINT_STRING
+    MOV AX,integrityRepairs
+    CALL PRINT_NUM
+    CMP integrityRepairs,0
+    JNE INTEGRITY_REPAIRED
+    LEA DX,integrityOKMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+INTEGRITY_REPAIRED:
+    LEA DX,integrityRepairMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+SYSTEM_INTEGRITY_CHECK ENDP
+
+CHECK_INVENTORY_INTEGRITY PROC
+    XOR SI,SI
+CHECK_INVENTORY_LOOP:
+    INC integrityChecks
+    MOV AL,bookAvailable[SI]
+    CMP AL,9
+    JBE CHECK_INVENTORY_NEXT
+    MOV bookAvailable[SI],0
+    INC integrityRepairs
+CHECK_INVENTORY_NEXT:
+    INC SI
+    CMP SI,10
+    JB CHECK_INVENTORY_LOOP
+    RET
+CHECK_INVENTORY_INTEGRITY ENDP
+
+CHECK_LOAN_INTEGRITY PROC
+    INC integrityChecks
+    CMP activeLoan,0
+    JE CHECK_INACTIVE_LOAN
+    CMP activeLoan,1
+    JE CHECK_ACTIVE_LOAN
+    MOV activeLoan,0
+    MOV currentBook,0
+    MOV loanDays,0
+    MOV renewCount,0
+    INC integrityRepairs
+    RET
+CHECK_INACTIVE_LOAN:
+    INC integrityChecks
+    CMP currentBook,0
+    JE CHECK_INACTIVE_DAYS
+    MOV currentBook,0
+    INC integrityRepairs
+CHECK_INACTIVE_DAYS:
+    INC integrityChecks
+    CMP loanDays,0
+    JE CHECK_INACTIVE_RENEW
+    MOV loanDays,0
+    INC integrityRepairs
+CHECK_INACTIVE_RENEW:
+    INC integrityChecks
+    CMP renewCount,0
+    JE CHECK_LOAN_DONE
+    MOV renewCount,0
+    INC integrityRepairs
+    JMP CHECK_LOAN_DONE
+CHECK_ACTIVE_LOAN:
+    INC integrityChecks
+    CMP currentBook,1
+    JB REPAIR_ACTIVE_LOAN
+    CMP currentBook,10
+    JA REPAIR_ACTIVE_LOAN
+    INC integrityChecks
+    CMP loanDays,1
+    JB REPAIR_ACTIVE_LOAN
+    CMP loanDays,21
+    JA REPAIR_ACTIVE_LOAN
+    INC integrityChecks
+    CMP renewCount,1
+    JBE CHECK_LOAN_DONE
+REPAIR_ACTIVE_LOAN:
+    MOV activeLoan,0
+    MOV currentBook,0
+    MOV loanDays,0
+    MOV renewCount,0
+    INC integrityRepairs
+CHECK_LOAN_DONE:
+    RET
+CHECK_LOAN_INTEGRITY ENDP
+
+CHECK_RESERVATION_INTEGRITY PROC
+    INC integrityChecks
+    CMP reservationBook,10
+    JBE CHECK_RESERVATION_DONE
+    MOV reservationBook,0
+    INC integrityRepairs
+CHECK_RESERVATION_DONE:
+    RET
+CHECK_RESERVATION_INTEGRITY ENDP
+
+CHECK_HISTORY_INTEGRITY PROC
+    INC integrityChecks
+    CMP historyCount,20
+    JBE CHECK_HISTORY_RECORDS
+    MOV historyCount,20
+    INC integrityRepairs
+CHECK_HISTORY_RECORDS:
+    XOR SI,SI
+CHECK_HISTORY_LOOP:
+    XOR AX,AX
+    MOV AL,historyCount
+    CMP SI,AX
+    JAE CHECK_HISTORY_DONE
+    INC integrityChecks
+    MOV AL,historyType[SI]
+    CMP AL,1
+    JB REPAIR_HISTORY_RECORD
+    CMP AL,5
+    JA REPAIR_HISTORY_RECORD
+    CMP AL,4
+    JE CHECK_HISTORY_NEXT
+    INC integrityChecks
+    MOV AL,historyBook[SI]
+    CMP AL,1
+    JB REPAIR_HISTORY_RECORD
+    CMP AL,10
+    JBE CHECK_HISTORY_NEXT
+REPAIR_HISTORY_RECORD:
+    MOV historyType[SI],0
+    MOV historyBook[SI],0
+    MOV BX,SI
+    SHL BX,1
+    MOV historyAmount[BX],0
+    INC integrityRepairs
+CHECK_HISTORY_NEXT:
+    INC SI
+    JMP CHECK_HISTORY_LOOP
+CHECK_HISTORY_DONE:
+    RET
+CHECK_HISTORY_INTEGRITY ENDP
+
+CHECK_FINANCIAL_INTEGRITY PROC
+    INC integrityChecks
+    MOV AX,grossFineTotal
+    CMP AX,discountTotal
+    JAE CHECK_NET_TOTAL
+    MOV discountTotal,AX
+    INC integrityRepairs
+CHECK_NET_TOTAL:
+    INC integrityChecks
+    MOV AX,grossFineTotal
+    SUB AX,discountTotal
+    CMP AX,netFineTotal
+    JE CHECK_FINANCIAL_DONE
+    MOV netFineTotal,AX
+    INC integrityRepairs
+CHECK_FINANCIAL_DONE:
+    RET
+CHECK_FINANCIAL_INTEGRITY ENDP
+
+CREATE_SESSION_BACKUP PROC
+    CALL CLEAR_SCREEN
+    LEA DX,backupTitle
+    CALL PRINT_STRING
+    LEA DX,backupConfirm
+    CALL READ_YN
+    CMP AL,1
+    JE CREATE_BACKUP_CONFIRMED
+    JMP CREATE_BACKUP_CANCELLED
+CREATE_BACKUP_CONFIRMED:
+    LEA SI,memberName
+    LEA DI,backupName
+    MOV CX,21
+    CALL COPY_FIXED_BYTES
+    LEA SI,memberID
+    LEA DI,backupID
+    MOV CX,5
+    CALL COPY_FIXED_BYTES
+    LEA SI,bookAvailable
+    LEA DI,backupStock
+    MOV CX,10
+    CALL COPY_FIXED_BYTES
+    MOV AL,activeLoan
+    MOV backupActive,AL
+    MOV AL,currentBook
+    MOV backupBook,AL
+    MOV AX,loanDays
+    MOV backupDays,AX
+    MOV AL,renewCount
+    MOV backupRenew,AL
+    MOV AX,borrowCount
+    MOV backupBorrowCount,AX
+    MOV AX,returnCount
+    MOV backupReturnCount,AX
+    MOV AX,renewTotal
+    MOV backupRenewTotal,AX
+    MOV AX,grossFineTotal
+    MOV backupGross,AX
+    MOV AX,discountTotal
+    MOV backupDiscount,AX
+    MOV AX,netFineTotal
+    MOV backupNet,AX
+    MOV AX,accountBalance
+    MOV backupBalance,AX
+    MOV AX,paymentTotal
+    MOV backupPayments,AX
+    MOV AX,lostCount
+    MOV backupLost,AX
+    MOV AL,reservationBook
+    MOV backupReserve,AL
+    MOV AX,reservationCount
+    MOV backupReservationTotal,AX
+    MOV AL,historyCount
+    MOV backupHistoryCount,AL
+    LEA SI,historyType
+    LEA DI,backupHistoryType
+    MOV CX,20
+    CALL COPY_FIXED_BYTES
+    LEA SI,historyBook
+    LEA DI,backupHistoryBook
+    MOV CX,20
+    CALL COPY_FIXED_BYTES
+    LEA SI,historyAmount
+    LEA DI,backupHistoryAmount
+    MOV CX,40
+    CALL COPY_FIXED_BYTES
+    MOV backupValid,1
+    LEA DX,backupOKMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+CREATE_BACKUP_CANCELLED:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+CREATE_SESSION_BACKUP ENDP
+
+RESTORE_SESSION_BACKUP PROC
+    CALL CLEAR_SCREEN
+    LEA DX,backupTitle
+    CALL PRINT_STRING
+    CMP backupValid,1
+    JE RESTORE_BACKUP_ALLOWED
+    LEA DX,noBackupMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RESTORE_BACKUP_ALLOWED:
+    LEA DX,restoreConfirm
+    CALL READ_YN
+    CMP AL,1
+    JE RESTORE_BACKUP_CONFIRMED
+    JMP RESTORE_BACKUP_CANCELLED
+RESTORE_BACKUP_CONFIRMED:
+    LEA SI,backupName
+    LEA DI,memberName
+    MOV CX,21
+    CALL COPY_FIXED_BYTES
+    LEA SI,backupID
+    LEA DI,memberID
+    MOV CX,5
+    CALL COPY_FIXED_BYTES
+    LEA SI,backupStock
+    LEA DI,bookAvailable
+    MOV CX,10
+    CALL COPY_FIXED_BYTES
+    MOV AL,backupActive
+    MOV activeLoan,AL
+    MOV AL,backupBook
+    MOV currentBook,AL
+    MOV AX,backupDays
+    MOV loanDays,AX
+    MOV AL,backupRenew
+    MOV renewCount,AL
+    MOV AX,backupBorrowCount
+    MOV borrowCount,AX
+    MOV AX,backupReturnCount
+    MOV returnCount,AX
+    MOV AX,backupRenewTotal
+    MOV renewTotal,AX
+    MOV AX,backupGross
+    MOV grossFineTotal,AX
+    MOV AX,backupDiscount
+    MOV discountTotal,AX
+    MOV AX,backupNet
+    MOV netFineTotal,AX
+    MOV AX,backupBalance
+    MOV accountBalance,AX
+    MOV AX,backupPayments
+    MOV paymentTotal,AX
+    MOV AX,backupLost
+    MOV lostCount,AX
+    MOV AL,backupReserve
+    MOV reservationBook,AL
+    MOV AX,backupReservationTotal
+    MOV reservationCount,AX
+    MOV AL,backupHistoryCount
+    MOV historyCount,AL
+    LEA SI,backupHistoryType
+    LEA DI,historyType
+    MOV CX,20
+    CALL COPY_FIXED_BYTES
+    LEA SI,backupHistoryBook
+    LEA DI,historyBook
+    MOV CX,20
+    CALL COPY_FIXED_BYTES
+    LEA SI,backupHistoryAmount
+    LEA DI,historyAmount
+    MOV CX,40
+    CALL COPY_FIXED_BYTES
+    LEA DX,restoreOKMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RESTORE_BACKUP_CANCELLED:
+    LEA DX,cancelMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+RESTORE_SESSION_BACKUP ENDP
+
+DISPLAY_DETAILED_REPORT PROC
+    CALL CLEAR_SCREEN
+    LEA DX,detailedTitle
+    CALL PRINT_STRING
+    LEA DX,memberNameMsg
+    CALL PRINT_STRING
+    LEA DX,memberName
+    CALL PRINT_STRING
+    LEA DX,memberIDMsg
+    CALL PRINT_STRING
+    LEA DX,memberID
+    CALL PRINT_STRING
+    LEA DX,loanStatusMsg
+    CALL PRINT_STRING
+    CMP activeLoan,1
+    JNE DETAIL_NO_LOAN
+    LEA DX,activeMsg
+    CALL PRINT_STRING
+    LEA DX,bookTitleMsg
+    CALL PRINT_STRING
+    MOV AL,currentBook
+    CALL PRINT_BOOK_TITLE
+    LEA DX,loanDaysMsg
+    CALL PRINT_STRING
+    MOV AX,loanDays
+    CALL PRINT_NUM
+    JMP DETAIL_RESERVATION
+DETAIL_NO_LOAN:
+    LEA DX,noneMsg
+    CALL PRINT_STRING
+DETAIL_RESERVATION:
+    CMP reservationBook,0
+    JE DETAIL_COUNTS
+    LEA DX,reservedBookMsg
+    CALL PRINT_STRING
+    MOV AL,reservationBook
+    CALL PRINT_BOOK_TITLE
+DETAIL_COUNTS:
+    LEA DX,borrowCountMsg
+    CALL PRINT_STRING
+    MOV AX,borrowCount
+    CALL PRINT_NUM
+    LEA DX,returnCountMsg
+    CALL PRINT_STRING
+    MOV AX,returnCount
+    CALL PRINT_NUM
+    LEA DX,renewCountMsg
+    CALL PRINT_STRING
+    MOV AX,renewTotal
+    CALL PRINT_NUM
+    LEA DX,lostCountMsg
+    CALL PRINT_STRING
+    MOV AX,lostCount
+    CALL PRINT_NUM
+    LEA DX,reservationTotalMsg
+    CALL PRINT_STRING
+    MOV AX,reservationCount
+    CALL PRINT_NUM
+    LEA DX,grossTotalMsg
+    CALL PRINT_STRING
+    MOV AX,grossFineTotal
+    CALL PRINT_MONEY
+    LEA DX,discountTotMsg
+    CALL PRINT_STRING
+    MOV AX,discountTotal
+    CALL PRINT_MONEY
+    LEA DX,netTotalMsg
+    CALL PRINT_STRING
+    MOV AX,netFineTotal
+    CALL PRINT_MONEY
+    LEA DX,paymentsMsg
+    CALL PRINT_STRING
+    MOV AX,paymentTotal
+    CALL PRINT_MONEY
+    LEA DX,balanceReportMsg
+    CALL PRINT_STRING
+    MOV AX,accountBalance
+    CALL PRINT_MONEY
+    LEA DX,historyCountMsg
+    CALL PRINT_STRING
+    XOR AX,AX
+    MOV AL,historyCount
+    CALL PRINT_NUM
+    LEA DX,backupStatusMsg
+    CALL PRINT_STRING
+    CMP backupValid,1
+    JNE DETAIL_NO_BACKUP
+    LEA DX,yesMsg
+    CALL PRINT_STRING
+    JMP DETAIL_DONE
+DETAIL_NO_BACKUP:
+    LEA DX,noMsg
+    CALL PRINT_STRING
+DETAIL_DONE:
+    CALL PAUSE_SCREEN
+    RET
+DISPLAY_DETAILED_REPORT ENDP
+
+LOAN_DUE_DATE_CALCULATOR PROC
+    CALL CLEAR_SCREEN
+    LEA DX,dateTitle
+    CALL PRINT_STRING
+    CMP activeLoan,1
+    JE DUE_DATE_HAS_LOAN
+    LEA DX,dateNoLoanMsg
+    CALL PRINT_STRING
+    CALL PAUSE_SCREEN
+    RET
+DUE_DATE_HAS_LOAN:
+    CALL READ_VALID_DATE
+    MOV AX,currentDay
+    MOV dueDay,AX
+    MOV AX,currentMonth
+    MOV dueMonth,AX
+    MOV AX,currentYear
+    MOV dueYear,AX
+    MOV CX,loanDays
+    CMP CX,0
+    JE DUE_DATE_READY
+DUE_DATE_ADD_LOOP:
+    INC dueDay
+    MOV AX,dueMonth
+    MOV BX,dueYear
+    CALL GET_DAYS_IN_MONTH
+    MOV AX,dueDay
+    CMP AX,daysInMonth
+    JBE DUE_DATE_NEXT_DAY
+    MOV dueDay,1
+    INC dueMonth
+    CMP dueMonth,12
+    JBE DUE_DATE_NEXT_DAY
+    MOV dueMonth,1
+    INC dueYear
+DUE_DATE_NEXT_DAY:
+    LOOP DUE_DATE_ADD_LOOP
+DUE_DATE_READY:
+    LEA DX,borrowDateMsg
+    CALL PRINT_STRING
+    MOV AX,currentDay
+    CALL PRINT_TWO_DIGIT
+    LEA DX,dateSeparator
+    CALL PRINT_STRING
+    MOV AX,currentMonth
+    CALL PRINT_TWO_DIGIT
+    LEA DX,dateSeparator
+    CALL PRINT_STRING
+    MOV AX,currentYear
+    CALL PRINT_NUM
+    LEA DX,dueDateMsg
+    CALL PRINT_STRING
+    MOV AX,dueDay
+    CALL PRINT_TWO_DIGIT
+    LEA DX,dateSeparator
+    CALL PRINT_STRING
+    MOV AX,dueMonth
+    CALL PRINT_TWO_DIGIT
+    LEA DX,dateSeparator
+    CALL PRINT_STRING
+    MOV AX,dueYear
+    CALL PRINT_NUM
+    CALL PAUSE_SCREEN
+    RET
+LOAN_DUE_DATE_CALCULATOR ENDP
+
+READ_VALID_DATE PROC
+READ_DATE_RETRY:
+    LEA DX,dayPrompt
+    MOV CX,1
+    MOV BX,31
+    CALL READ_NUMBER_RANGE
+    MOV currentDay,AX
+    LEA DX,monthPrompt
+    MOV CX,1
+    MOV BX,12
+    CALL READ_NUMBER_RANGE
+    MOV currentMonth,AX
+    LEA DX,yearPrompt
+    MOV CX,2024
+    MOV BX,2099
+    CALL READ_NUMBER_RANGE
+    MOV currentYear,AX
+    MOV AX,currentMonth
+    MOV BX,currentYear
+    CALL GET_DAYS_IN_MONTH
+    MOV AX,currentDay
+    CMP AX,daysInMonth
+    JBE READ_DATE_VALID
+    LEA DX,dateInvalidMsg
+    CALL PRINT_STRING
+    JMP READ_DATE_RETRY
+READ_DATE_VALID:
+    RET
+READ_VALID_DATE ENDP
+
+GET_DAYS_IN_MONTH PROC
+    CMP AX,1
+    JE MONTH_HAS_31
+    CMP AX,2
+    JE MONTH_IS_FEBRUARY
+    CMP AX,3
+    JE MONTH_HAS_31
+    CMP AX,4
+    JE MONTH_HAS_30
+    CMP AX,5
+    JE MONTH_HAS_31
+    CMP AX,6
+    JE MONTH_HAS_30
+    CMP AX,7
+    JE MONTH_HAS_31
+    CMP AX,8
+    JE MONTH_HAS_31
+    CMP AX,9
+    JE MONTH_HAS_30
+    CMP AX,10
+    JE MONTH_HAS_31
+    CMP AX,11
+    JE MONTH_HAS_30
+    JMP MONTH_HAS_31
+MONTH_HAS_30:
+    MOV daysInMonth,30
+    RET
+MONTH_HAS_31:
+    MOV daysInMonth,31
+    RET
+MONTH_IS_FEBRUARY:
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    MOV CX,BX
+    MOV AX,CX
+    XOR DX,DX
+    MOV BX,400
+    DIV BX
+    CMP DX,0
+    JE FEBRUARY_LEAP
+    MOV AX,CX
+    XOR DX,DX
+    MOV BX,100
+    DIV BX
+    CMP DX,0
+    JE FEBRUARY_NORMAL
+    MOV AX,CX
+    XOR DX,DX
+    MOV BX,4
+    DIV BX
+    CMP DX,0
+    JE FEBRUARY_LEAP
+FEBRUARY_NORMAL:
+    MOV daysInMonth,28
+    JMP FEBRUARY_DONE
+FEBRUARY_LEAP:
+    MOV daysInMonth,29
+FEBRUARY_DONE:
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+GET_DAYS_IN_MONTH ENDP
+
+PRINT_TWO_DIGIT PROC
+    PUSH AX
+    PUSH DX
+    CMP AX,10
+    JAE PRINT_TWO_DIGIT_VALUE
+    MOV DL,'0'
+    MOV AH,02H
+    INT 21H
+PRINT_TWO_DIGIT_VALUE:
+    POP DX
+    POP AX
+    CALL PRINT_NUM
+    RET
+PRINT_TWO_DIGIT ENDP
+
+DISPLAY_RECEIPT_MEMBER PROC
+    LEA DX,receiptMemberMsg
+    CALL PRINT_STRING
+    LEA DX,memberID
+    CALL PRINT_STRING
+    RET
+DISPLAY_RECEIPT_MEMBER ENDP
+
+DISPLAY_BORROW_RECEIPT PROC
+    LEA DX,receiptTitle
+    CALL PRINT_STRING
+    LEA DX,receiptTypeMsg
+    CALL PRINT_STRING
+    LEA DX,receiptBorrow
+    CALL PRINT_STRING
+    CALL DISPLAY_RECEIPT_MEMBER
+    LEA DX,receiptBookMsg
+    CALL PRINT_STRING
+    MOV AL,currentBook
+    CALL PRINT_BOOK_TITLE
+    LEA DX,receiptDaysMsg
+    CALL PRINT_STRING
+    MOV AX,loanDays
+    CALL PRINT_NUM
+    LEA DX,receiptBalanceMsg
+    CALL PRINT_STRING
+    MOV AX,accountBalance
+    CALL PRINT_MONEY
+    LEA DX,receiptEndMsg
+    CALL PRINT_STRING
+    RET
+DISPLAY_BORROW_RECEIPT ENDP
+
+DISPLAY_RETURN_RECEIPT PROC
+    LEA DX,receiptTitle
+    CALL PRINT_STRING
+    LEA DX,receiptTypeMsg
+    CALL PRINT_STRING
+    LEA DX,receiptReturn
+    CALL PRINT_STRING
+    CALL DISPLAY_RECEIPT_MEMBER
+    LEA DX,receiptBookMsg
+    CALL PRINT_STRING
+    MOV AL,lastReturnedBook
+    CALL PRINT_BOOK_TITLE
+    LEA DX,receiptGrossMsg
+    CALL PRINT_STRING
+    MOV AX,tempGross
+    CALL PRINT_MONEY
+    LEA DX,receiptDiscountMsg
+    CALL PRINT_STRING
+    MOV AX,tempDiscount
+    CALL PRINT_MONEY
+    LEA DX,receiptNetMsg
+    CALL PRINT_STRING
+    MOV AX,tempNet
+    CALL PRINT_MONEY
+    LEA DX,receiptBalanceMsg
+    CALL PRINT_STRING
+    MOV AX,accountBalance
+    CALL PRINT_MONEY
+    LEA DX,receiptEndMsg
+    CALL PRINT_STRING
+    RET
+DISPLAY_RETURN_RECEIPT ENDP
+
+DISPLAY_RENEW_RECEIPT PROC
+    LEA DX,receiptTitle
+    CALL PRINT_STRING
+    LEA DX,receiptTypeMsg
+    CALL PRINT_STRING
+    LEA DX,receiptRenew
+    CALL PRINT_STRING
+    CALL DISPLAY_RECEIPT_MEMBER
+    LEA DX,receiptBookMsg
+    CALL PRINT_STRING
+    MOV AL,currentBook
+    CALL PRINT_BOOK_TITLE
+    LEA DX,receiptDaysMsg
+    CALL PRINT_STRING
+    MOV AX,loanDays
+    CALL PRINT_NUM
+    LEA DX,receiptEndMsg
+    CALL PRINT_STRING
+    RET
+DISPLAY_RENEW_RECEIPT ENDP
+
+DISPLAY_PAYMENT_RECEIPT PROC
+    LEA DX,receiptTitle
+    CALL PRINT_STRING
+    LEA DX,receiptTypeMsg
+    CALL PRINT_STRING
+    LEA DX,receiptPayment
+    CALL PRINT_STRING
+    CALL DISPLAY_RECEIPT_MEMBER
+    LEA DX,cardUsedMsg
+    CALL PRINT_STRING
+    LEA DX,cardLastFour
+    CALL PRINT_STRING
+    LEA DX,receiptPaidMsg
+    CALL PRINT_STRING
+    MOV AX,lastPayment
+    CALL PRINT_MONEY
+    LEA DX,receiptBalanceMsg
+    CALL PRINT_STRING
+    MOV AX,accountBalance
+    CALL PRINT_MONEY
+    LEA DX,receiptEndMsg
+    CALL PRINT_STRING
+    RET
+DISPLAY_PAYMENT_RECEIPT ENDP
+
+VALIDATE_CARD_NUMBER PROC
+    PUSH CX
+    PUSH SI
+    CMP inputBuffer[1],16
+    JNE CARD_NUMBER_INVALID
+    LEA SI,inputBuffer+2
+    MOV CX,16
+CARD_NUMBER_DIGIT_LOOP:
+    MOV AL,[SI]
+    CMP AL,'0'
+    JB CARD_NUMBER_INVALID
+    CMP AL,'9'
+    JA CARD_NUMBER_INVALID
+    INC SI
+    LOOP CARD_NUMBER_DIGIT_LOOP
+    MOV AL,1
+    JMP CARD_NUMBER_VALIDATION_DONE
+CARD_NUMBER_INVALID:
+    MOV AL,0
+CARD_NUMBER_VALIDATION_DONE:
+    POP SI
+    POP CX
+    RET
+VALIDATE_CARD_NUMBER ENDP
+
+SAVE_CARD_LAST_FOUR PROC
+    PUSH AX
+    PUSH CX
+    PUSH SI
+    PUSH DI
+    LEA SI,inputBuffer+14
+    LEA DI,cardLastFour
+    MOV CX,4
+SAVE_CARD_DIGIT_LOOP:
+    MOV AL,[SI]
+    MOV [DI],AL
+    INC SI
+    INC DI
+    LOOP SAVE_CARD_DIGIT_LOOP
+    MOV BYTE PTR [DI],'$'
+    POP DI
+    POP SI
+    POP CX
+    POP AX
+    RET
+SAVE_CARD_LAST_FOUR ENDP
+
+VALIDATE_CARD_PIN PROC
+    PUSH CX
+    PUSH SI
+    CMP passwordBuffer[1],4
+    JNE CARD_PIN_INVALID
+    LEA SI,passwordBuffer+2
+    MOV CX,4
+CARD_PIN_DIGIT_LOOP:
+    MOV AL,[SI]
+    CMP AL,'0'
+    JB CARD_PIN_INVALID
+    CMP AL,'9'
+    JA CARD_PIN_INVALID
+    INC SI
+    LOOP CARD_PIN_DIGIT_LOOP
+    MOV AL,1
+    JMP CARD_PIN_VALIDATION_DONE
+CARD_PIN_INVALID:
+    MOV AL,0
+CARD_PIN_VALIDATION_DONE:
+    POP SI
+    POP CX
+    RET
+VALIDATE_CARD_PIN ENDP
+
+PRINT_CATALOGUE_TOTALS PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    LEA DX,shortLine
+    CALL PRINT_STRING
+    LEA DX,totalTitlesMsg
+    CALL PRINT_STRING
+    MOV AX,10
+    CALL PRINT_NUM
+    XOR BX,BX
+    XOR CX,CX
+    XOR SI,SI
+CATALOGUE_TOTAL_LOOP:
+    XOR AX,AX
+    MOV AL,bookAvailable[SI]
+    ADD BX,AX
+    CMP AL,0
+    JNE CATALOGUE_TOTAL_NEXT
+    INC CX
+CATALOGUE_TOTAL_NEXT:
+    INC SI
+    CMP SI,10
+    JB CATALOGUE_TOTAL_LOOP
+    LEA DX,totalCopiesMsg
+    CALL PRINT_STRING
+    MOV AX,BX
+    CALL PRINT_NUM
+    LEA DX,zeroStockMsg
+    CALL PRINT_STRING
+    MOV AX,CX
+    CALL PRINT_NUM
+    LEA DX,shortLine
+    CALL PRINT_STRING
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+PRINT_CATALOGUE_TOTALS ENDP
+
+END MAIN
